@@ -171,9 +171,10 @@ export const reveals = pgTable("reveals", {
 export const sequences = pgTable("sequences", {
   id: id(),
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
-  contactId: text("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  contactId: text("contact_id").references(() => contacts.id, { onDelete: "set null" }),   // attached once a person is chosen
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   status: text("status").notNull().default("draft"),   // draft | active | replied | paused | done
+  summary: text("summary"),                            // the relationship line the drafts rest on
   step: integer("step").notNull().default(0),
   nextAt: timestamp("next_at", { withTimezone: true }),
   threadId: text("thread_id"),                  // first Message-ID, for reply matching

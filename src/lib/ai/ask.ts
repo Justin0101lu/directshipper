@@ -80,7 +80,7 @@ async function runQueryReplies(accountId: string, text: string | null) {
   const out = [];
   for (const r of rows) {
     const [f] = await db.select({ name: schema.facilities.name }).from(schema.facilities).where(eq(schema.facilities.id, r.facilityId));
-    const [c] = await db.select({ name: schema.contacts.name }).from(schema.contacts).where(eq(schema.contacts.id, r.contactId));
+    const [c] = r.contactId ? await db.select({ name: schema.contacts.name }).from(schema.contacts).where(eq(schema.contacts.id, r.contactId)) : [];
     out.push({ id: r.id, facility: f?.name, contact: c?.name, date: r.at?.toISOString().slice(0, 10), label: r.label, text: r.text });
   }
   return out;

@@ -5,89 +5,123 @@ import { api } from "@/components/api";
 import { useFlash } from "@/components/Flash";
 import { useMe } from "@/components/AppShell";
 
+type Person = { id: string; title: string | null; name: string | null; email: string | null; emailStatus: string | null; phone: string | null; linkedin: string | null; has: Record<string, boolean> };
 type Touch = { id: string; step: number; channel: string; subject: string | null; body: string; status: string; sentAt: string | null };
-type Seq = { id: string; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null;
-  contact: { id: string; name: string | null; email: string | null; title: string | null }; facility: { id: string; name: string; city: string; state: string }; touches: Touch[]; next: Touch | null };
-type Data = { queue: Seq[]; sequence: { day: number; channel: string; name: string; approve: boolean }[] };
+type Seq = { id: string; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null; contactId: string | null; touches: Touch[] };
+type Rel = { deliveries: number; pickups: number; lastAt: string | null; daysSinceLast: number | null; perMonth: number; weekday: string | null; brokers: number; kind: string; warmth: number };
+type Card = { facilityId: string; name: string; city: string; rel: Rel | null; summary: string; sequence: Seq | null; people: Person[]; best: Person | null; contact: Person | null; state: string };
+type Data = { cards: Card[]; sequence: { day: number; channel: string; name: string; approve: boolean }[] };
 
 const LABEL: Record<string, [string, string]> = { interested: ["INTERESTED", "t-ver"], send_paperwork: ["SEND PAPERWORK", "t-ver"], not_now: ["NOT NOW", "t-inf"], wrong_person: ["WRONG PERSON", "t-inf"], unsubscribe: ["UNSUBSCRIBE", "t-flag"], unclear: ["REPLIED", "t-obs"] };
+const STATE: Record<string, [string, string]> = { replied: ["REPLIED", "t-ver"], ready: ["READY TO SEND", "t-ver"], copy: ["PASTE TO LINKEDIN", "t-obs"], needs_email: ["NEEDS AN EMAIL", "t-obs"], needs_people: ["NEEDS A CONTACT", "t-obs"], needs_draft: ["NOT DRAFTED YET", "t-inf"], active: ["RUNNING", "t-ver"], paused: ["PAUSED", "t-inf"], done: ["DONE", "t-inf"] };
+const FILTERS = [["all", "All"], ["todo", "Needs you"], ["active", "Running"], ["replied", "Replied"], ["done", "Done"]] as const;
 
 export default function Outreach() {
   const { me, refresh } = useMe(); const { flash } = useFlash(); const r = useRouter();
-  const [d, setD] = useState<Data | null>(null); const [sel, setSel] = useState<string | null>(null); const [stepSel, setStepSel] = useState(0);
-  const [edit, setEdit] = useState<{ subject: string; body: string } | null>(null); const [busy, setBusy] = useState(false);
-  const load = useCallback(() => api<Data>("/api/outreach").then((x) => { setD(x); setSel((s) => s ?? x.queue[0]?.id ?? null); }), []);
+  const [d, setD] = useState<Data | null>(null); const [open, setOpen] = useState<string | null>(null); const [step, setStep] = useState(0);
+  const [edit, setEdit] = useState<{ subject: string; body: string } | null>(null); const [busy, setBusy] = useState<string | null>(null); const [filter, setFilter] = useState<string>("all");
+  const load = useCallback(() => api<Data>("/api/outreach").then(setD).catch((e) => flash(e.message, "err")), [flash]);
   useEffect(() => { load(); }, [load]);
-  const seq = d?.queue.find((s) => s.id === sel) || null;
-  const touch = seq?.touches.find((t) => t.step === stepSel) || seq?.touches[0] || null;
-  useEffect(() => { setEdit(null); setStepSel(seq?.status === "draft" ? 0 : Math.min(seq?.step ?? 0, 6)); }, [sel, seq?.status, seq?.step]);
   const canSend = me && me.plan !== "free";
   const hasMailbox = me?.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft");
 
-  async function approve() {
-    if (!seq) return; setBusy(true);
-    try { await api("/api/outreach/approve", { method: "POST", json: { sequenceId: seq.id, subject: edit?.subject, body: edit?.body } }); flash("Sent as you. The follow-ups are scheduled and stop the moment they reply."); setEdit(null); await load(); refresh(); }
-    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); } finally { setBusy(false); }
-  }
-  async function sendReply() {
-    if (!seq || !seq.suggested) return; setBusy(true);
-    try { await api("/api/outreach/reply", { method: "POST", json: { sequenceId: seq.id, body: edit?.body ?? seq.suggested } }); flash("Reply sent as you."); setEdit(null); await load(); }
-    catch (e) { flash((e as Error).message, "err"); } finally { setBusy(false); }
-  }
-  async function copied(t: Touch) { navigator.clipboard?.writeText(t.body); await api("/api/outreach/copied", { method: "POST", json: { touchId: t.id } }); flash("Copied. Paste it into LinkedIn; the step is marked done."); load(); }
+  const run = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
+    setBusy(key);
+    try { await fn(); if (ok) flash(ok); await load(); refresh(); }
+    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
+    finally { setBusy(null); }
+  };
+  const prepare = (c: Card) => run(`prep:${c.facilityId}`, () => api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId } }), "Sequence written from your history with this dock.");
+  const prepareTop = () => run("prep:top", async () => { const x = await api<{ made: number }>("/api/outreach/prepare", { method: "POST", json: { n: 5 } }); flash(`${x.made} sequence${x.made === 1 ? "" : "s"} written.`); });
+  const discover = (c: Card) => run(`disc:${c.facilityId}`, () => api("/api/contacts/discover", { method: "POST", json: { facilityId: c.facilityId } }), "Looked up. Titles are free; an email is one token.");
+  const revealEmail = (c: Card, p: Person) => run(`email:${p.id}`, async () => {
+    if (!p.name) await api("/api/contacts/reveal", { method: "POST", json: { contactId: p.id, field: "name" } });
+    const x = await api<{ found: boolean }>("/api/contacts/reveal", { method: "POST", json: { contactId: p.id, field: "email" } });
+    if (!x.found) throw new Error("No verified email found for this person. Nothing charged for the email.");
+    if (c.sequence) await api("/api/outreach/attach", { method: "POST", json: { sequenceId: c.sequence.id, contactId: p.id } });
+    else await api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId, contactId: p.id } });
+  }, "Email found and attached. Approve the opener when you are ready.");
+  const approve = (c: Card) => run(`send:${c.facilityId}`, () => api("/api/outreach/approve", { method: "POST", json: { sequenceId: c.sequence!.id, subject: edit?.subject, body: edit?.body } }), "Sent as you. Follow-ups are scheduled and stop the moment they reply.");
+  const sendReply = (c: Card) => run(`reply:${c.facilityId}`, () => api("/api/outreach/reply", { method: "POST", json: { sequenceId: c.sequence!.id, body: edit?.body ?? c.sequence!.suggested } }), "Reply sent as you.");
+  const copied = (t: Touch) => run(`copy:${t.id}`, async () => { navigator.clipboard?.writeText(t.body); await api("/api/outreach/copied", { method: "POST", json: { touchId: t.id } }); }, "Copied. Paste it into LinkedIn; the step is marked done.");
+  const pause = (c: Card, on: boolean) => run(`pause:${c.facilityId}`, () => api("/api/outreach/pause", { method: "POST", json: { sequenceId: c.sequence!.id, on } }), on ? "Paused." : "Resumed.");
 
-  function status(s: Seq) {
-    if (s.replyLabel) { const [l, c] = LABEL[s.replyLabel] || LABEL.unclear; return <span className={`tag ${c}`}>{l}</span>; }
-    if (s.status === "draft") return <span className="tag t-obs">OPENER NEEDS APPROVAL</span>;
-    if (s.status === "paused") return <span className="tag t-flag">PAUSED</span>;
-    if (s.status === "done") return <span className="tag t-inf">SEQUENCE DONE</span>;
-    if (s.next?.channel === "linkedin" && s.next.status === "copied") return <span className="tag t-obs">COPY TO LINKEDIN</span>;
-    return <span className="tag t-ver">ACTIVE · STEP {s.step + 1}</span>;
+  const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "paused"].includes(c.state) : c.state === filter);
+  const counts = (k: string) => (d?.cards || []).filter((c) => k === "all" ? c.state !== "done" : k === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : k === "active" ? ["active", "paused"].includes(c.state) : c.state === k).length;
+
+  /* The one button each card needs next. */
+  function primary(c: Card) {
+    const p = c.contact || c.best;
+    switch (c.state) {
+      case "needs_draft": return <button className="btn" disabled={busy === `prep:${c.facilityId}` || !me?.features.ai} onClick={() => prepare(c)}>{busy === `prep:${c.facilityId}` ? <><span className="spin" />Writing…</> : "Write the sequence · free"}</button>;
+      case "needs_people": return <button className="btn" disabled={busy === `disc:${c.facilityId}` || !me?.features.providers.includes("peopledatalabs")} onClick={() => discover(c)} title={me?.features.providers.includes("peopledatalabs") ? "" : "Needs a People Data Labs key"}>{busy === `disc:${c.facilityId}` ? <><span className="spin" />Looking…</> : "Find contacts · free"}</button>;
+      case "needs_email": return p ? <button className="btn" disabled={busy === `email:${p.id}`} onClick={() => revealEmail(c, p)}>{busy === `email:${p.id}` ? <><span className="spin" />Finding…</> : `Get ${p.name ? p.name.split(" ")[0] + "'s" : "the " + (p.title || "contact") + "'s"} email · ${p.name ? "1" : "2"} tokens`}</button> : null;
+      case "ready": return <button className="btn" disabled={busy === `send:${c.facilityId}` || !canSend || !hasMailbox} onClick={() => { setOpen(c.facilityId); setStep(0); approve(c); }}>{busy === `send:${c.facilityId}` ? <><span className="spin" />Sending…</> : "Approve & send opener"}</button>;
+      case "replied": return c.sequence?.suggested ? <button className="btn" disabled={busy === `reply:${c.facilityId}` || !canSend} onClick={() => sendReply(c)}>{busy === `reply:${c.facilityId}` ? <><span className="spin" />Sending…</> : "Send suggested reply"}</button> : <button className="btn-ghost" onClick={() => setOpen(c.facilityId)}>Read reply</button>;
+      case "copy": { const t = c.sequence?.touches.find((x) => x.step === c.sequence!.step); return t ? <button className="btn" onClick={() => copied(t)}>Copy LinkedIn note</button> : null; }
+      case "active": return <button className="btn-ghost" onClick={() => pause(c, true)}>Pause</button>;
+      case "paused": return <button className="btn-ghost" onClick={() => pause(c, false)}>Resume</button>;
+      default: return null;
+    }
+  }
+
+  function seqPanel(c: Card) {
+    const s = c.sequence; if (!s) return null;
+    const touch = s.touches.find((t) => t.step === step) || s.touches[0];
+    const first = c.contact?.name?.split(" ")[0] || "{{first}}";
+    const show = (t: string) => t.replace(/\{\{first\}\}/g, first);
+    return (
+      <div className="seq-panel">
+        {s.replyText && <div className="msg them"><span className="msg-w">{(c.contact?.name || "Them").split(" ")[0]} · Email · {s.replyAt ? new Date(s.replyAt).toLocaleDateString() : ""}</span>{s.replyText}</div>}
+        {s.suggested ? (<>
+          <div className="draft-label">Suggested reply {s.replyLabel && (() => { const [l, cl] = LABEL[s.replyLabel] || LABEL.unclear; return <span className={`tag ${cl}`}>{l}</span>; })()}</div>
+          {edit ? <textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /> : <div className="draft">{s.suggested.split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
+          <div className="seq-actions"><button className="btn" onClick={() => sendReply(c)} disabled={!canSend || busy === `reply:${c.facilityId}`}>Send as you</button><button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: "", body: s.suggested! })}>{edit ? "Cancel edit" : "Edit"}</button></div>
+        </>) : (<>
+          <div className="chan-tabs">{s.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === step ? " on" : ""}`} onClick={() => { setStep(t.step); setEdit(null); }}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "linkedin" ? " · copy" : ""}{t.status === "sent" ? " ✓" : ""}</button>)}</div>
+          {touch && (<>
+            <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? "copy into LinkedIn" : touch.step === 0 ? (touch.status === "sent" ? "sent" : "needs your approval") : touch.status === "sent" ? "sent" : `sends itself on day ${d?.sequence[touch.step]?.day}`}</div>
+            {edit && touch.step === 0 && touch.status !== "sent" ? <><input type="text" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} style={{ marginBottom: 8 }} /><textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /></>
+              : <div className="draft">{touch.subject && touch.channel === "email" && <div className="draft-sub">Subject: {show(touch.subject)}</div>}{show(touch.body).split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
+            <div className="seq-actions">
+              {touch.channel === "linkedin" && touch.status !== "sent" ? <button className="btn-ghost" onClick={() => copied(touch)}>Copy note</button> : null}
+              {touch.step === 0 && s.status === "draft" ? <button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: show(touch.subject || ""), body: show(touch.body) })}>{edit ? "Cancel edit" : "Edit opener"}</button> : null}
+              {!c.contact && <span className="hint" style={{ margin: 0 }}>Written to the transportation contact; the first name fills in when you pick a person.</span>}
+            </div>
+          </>)}
+        </>)}
+        {c.people.length > 0 && (
+          <div className="people-row"><span className="small">People here:</span>{c.people.map((p) => <button key={p.id} className={`chip${c.contact?.id === p.id ? " on" : ""}`} title={p.email ? p.email : p.has.email ? "email on file, 1 token" : "email will be looked up"} disabled={busy === `email:${p.id}`} onClick={() => c.contact?.id === p.id ? null : revealEmail(c, p)}>{p.name || p.title || "contact"}{p.name && p.title ? <i>{p.title}</i> : null}{p.email ? " ✓" : ""}</button>)}</div>
+        )}
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days. Approve the opener, the rest sends itself, and it stops the moment they reply.` : "Loading…"}</p></div>
-        {!hasMailbox && <div><a className="btn-ghost" href="/app/sources">Connect sending mailbox</a></div>}</div>
-      {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting and reading are free. Sends are unlimited on both paid plans, with no per-seat and no per-mailbox fee.</p></div>}
-      <div className="grid2 or-grid">
-        <div className="panel" style={{ marginBottom: 0 }}><h3>Queue</h3><p className="ph">Nothing sends without you. Every touch goes out under your name. Click a row to see its draft.</p>
-          <table style={{ border: "none" }}><thead><tr><th>Who</th><th>Next touch</th><th>Reply</th><th>Status</th></tr></thead><tbody>
-            {d && !d.queue.length && <tr style={{ cursor: "default" }}><td colSpan={4} style={{ color: "var(--faint)" }}>Nothing queued. Reveal a contact under Prospects and click Add to outreach.</td></tr>}
-            {d?.queue.map((s) => <tr key={s.id} className={s.id === sel ? "sel" : ""} onClick={() => setSel(s.id)}>
-              <td className="lead">{s.facility.name}<div className="cell-sub">{s.contact.name || "no name yet"}</div></td>
-              <td data-label="Next touch">{s.next ? `${d.sequence[s.next.step]?.name ?? ""}` : "—"}<div className="cell-sub">{s.next ? s.next.channel : ""}{s.nextAt && s.status === "active" ? ` · ${new Date(s.nextAt).toLocaleDateString()}` : ""}</div></td>
-              <td data-label="Reply">{s.replyLabel ? (() => { const [l, c] = LABEL[s.replyLabel] || LABEL.unclear; return <span className={`tag ${c}`}>{l}</span>; })() : <span className="hint" style={{ margin: 0 }}>&mdash;</span>}</td>
-              <td data-label="Status">{status(s)}</td></tr>)}
-          </tbody></table></div>
-        <div className="panel" style={{ marginBottom: 0 }}>
-          {!seq ? <p className="hint">Select a row.</p> : (<>
-            <h3>{seq.facility.name} &mdash; {seq.contact.name || "contact"} <span style={{ marginLeft: 6 }}>{status(seq)}</span></h3>
-            <p className="ph">{seq.contact.title ? seq.contact.title + " · " : ""}{seq.facility.city}, {seq.facility.state}{seq.contact.email ? " · " + seq.contact.email : ""}</p>
-            {seq.replyText && <div className="msg them"><span className="msg-w">{(seq.contact.name || "Them").split(" ")[0]} · Email · {seq.replyAt ? new Date(seq.replyAt).toLocaleDateString() : ""}</span>{seq.replyText}</div>}
-            {seq.suggested ? (<>
-              <div className="draft-label">Suggested reply</div>
-              {edit ? <textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /> : <div className="draft">{seq.suggested.split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
-              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}><button className="btn" onClick={sendReply} disabled={busy || !canSend}>{busy ? <><span className="spin" />Sending…</> : "Approve & send"}</button><button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: "", body: seq.suggested! })}>{edit ? "Cancel edit" : "Edit"}</button></div>
-              <p className="hint">The sequence stopped when they replied. This is the only thing queued for them.</p></>)
-            : seq.status === "paused" && seq.replyLabel === "not_now" ? <><div className="draft-label">Sequence paused</div><div className="draft"><div className="draft-sub">Nothing queued</div>They said not now{seq.nextAt ? `. A fresh opener is queued for ${new Date(seq.nextAt).toLocaleDateString()} and waits for your approval.` : "."}</div></>
-            : (<>
-              <div className="chan-tabs">{seq.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === stepSel ? " on" : ""}`} onClick={() => { setStepSel(t.step); setEdit(null); }} title={d?.sequence[t.step]?.name}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "linkedin" ? " · copy" : ""}{t.status === "sent" ? " ✓" : ""}</button>)}</div>
-              {touch && (<>
-                <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? "copy into LinkedIn" : touch.step === 0 ? (touch.status === "sent" ? "sent" : "needs your approval") : touch.status === "sent" ? "sent" : "sends itself"}</div>
-                {edit && touch.step === 0 && touch.status !== "sent" ? <><input type="text" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} style={{ marginBottom: 8 }} /><textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /></>
-                  : <div className="draft">{touch.subject && touch.channel === "email" && <div className="draft-sub">Subject: {touch.subject}</div>}{touch.body.split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
-                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-                  {touch.channel === "linkedin" ? <button className="btn" onClick={() => copied(touch)}>Copy note</button>
-                    : touch.step === 0 && seq.status === "draft" ? <><button className="btn" onClick={approve} disabled={busy || !canSend || !hasMailbox}>{busy ? <><span className="spin" />Sending…</> : "Approve & send"}</button><button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: touch.subject || "", body: touch.body })}>{edit ? "Cancel edit" : "Edit"}</button></>
-                    : null}
-                </div>
-                <p className="hint">{touch.channel === "linkedin" ? "Pasted by you, never automated. Automating LinkedIn gets accounts restricted." : touch.step === 0 ? "Approve the opener once. The follow-ups send themselves and stop the moment they reply." : `Sends on day ${d?.sequence[touch.step]?.day} unless they reply first.`}{!hasMailbox && " Connect a Gmail or Outlook mailbox first."}</p></>)}
-            </>)}
-          </>)}
-        </div>
-      </div>
-      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>Sequence settings</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · email sends itself, LinkedIn is copy-only` : ""}</span></summary>
+      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.length} docks from your own rate cons, warmest first. Each sequence is written from your history with that dock.` : "Loading…"}</p></div>
+        <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
+      {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting, finding contacts and reading replies are free. Sends are unlimited on both paid plans.</p></div>}
+      <div className="chips">{FILTERS.map(([k, label]) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}<i>{counts(k)}</i></button>)}</div>
+      {d && !cards.length && <div className="empty"><h3>Nothing here yet</h3><p>{d.cards.length ? "No docks under this filter." : "Docks appear as your rate cons are read. Each one gets a sequence written from your history there."}</p></div>}
+      {cards.map((c) => {
+        const [sl, sc] = STATE[c.state] || STATE.needs_draft; const isOpen = open === c.facilityId; const p = c.contact || c.best;
+        return (
+          <div className={`ocard${isOpen ? " open" : ""}`} key={c.facilityId}>
+            <div className="ocard-h" onClick={() => { setOpen(isOpen ? null : c.facilityId); setStep(c.sequence?.status === "draft" ? 0 : Math.min(c.sequence?.step ?? 0, 6)); setEdit(null); }}>
+              <div className="ocard-t"><i>{isOpen ? "▾" : "▸"}</i><b>{c.name}</b><span className="small">{c.city}</span> <span className={`tag ${sc}`}>{sl}</span>{c.state === "replied" && c.sequence?.replyLabel && (() => { const [l, cl] = LABEL[c.sequence.replyLabel] || LABEL.unclear; return <span className={`tag ${cl}`} style={{ marginLeft: 4 }}>{l}</span>; })()}</div>
+              <div className="ocard-sum">{c.summary}</div>
+              <div className="ocard-meta small">
+                {p ? <>{p.name || "Contact"}{p.title ? `, ${p.title}` : ""}{p.email ? ` · ${p.email}` : ""}</> : c.people.length ? `${c.people.length} people in freight roles` : "nobody looked up yet"}
+                {c.sequence?.status === "active" && c.sequence.nextAt ? ` · next touch ${new Date(c.sequence.nextAt).toLocaleDateString()}` : ""}
+              </div>
+            </div>
+            <div className="ocard-a" onClick={(e) => e.stopPropagation()}>{primary(c)}</div>
+            {isOpen && (c.sequence ? seqPanel(c) : <div className="seq-panel"><p className="hint" style={{ margin: 0 }}>No sequence written yet for this dock. Writing one is free and takes a few seconds.</p></div>)}
+          </div>
+        );
+      })}
+      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>How a sequence runs</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · you approve the opener, email follow-ups send themselves, LinkedIn is copy-only, everything stops on a reply` : ""}</span></summary>
         <div className="fold-body"><ol className="seq">{d?.sequence.map((s, i) => <li className="seq-step" key={i}><div className="seq-when">Day {s.day}</div><div className="seq-body"><b>{s.name}</b> <span className="seq-ch">{s.channel === "email" ? "Email" : "LinkedIn"}</span> {s.approve ? <span className="tag t-obs">YOU APPROVE</span> : s.channel === "linkedin" ? <span className="tag t-inf">COPY</span> : <span className="tag t-ver">AUTO</span>}</div></li>)}</ol></div></details>
     </>
   );

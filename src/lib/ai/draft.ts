@@ -23,32 +23,39 @@ const DraftsSchema = z.object({
 });
 
 export type DraftContext = {
-  carrier: string; signer: string; contactFirst: string; contactTitle: string | null;
+  carrier: string; signer: string;
+  contactFirst: string | null; contactTitle: string | null;     // null: write to {{first}}, filled at send time
   facility: string; city: string;
-  deliveries: number;                 // how often we deliver here per year (0 for lookalikes)
-  theirOutbound: string | null;       // e.g. "Phoenix -> Ontario 34%"
-  ourHomeLane: string;                // e.g. "Ontario, CA"
-  deadhead: string | null;            // e.g. "we run back empty from Phoenix 21% of the time"
-  equipment: string;                  // "53' reefer"
-  kind: "receiver" | "lookalike";
+  relationship: string;                 // plain-English history with this dock, from the paperwork
+  kind: "receiver" | "shipper" | "both" | "lookalike";
+  theirOutbound: string | null;         // what the network sees them ship, if known
+  ourHome: string; equipment: string; family: string;
+  deadhead: string | null;              // e.g. "we run back empty from Phoenix 21% of the time"
+  lanesIn: string | null;               // where we come from when we deliver to them
 };
 
 export async function draftSequence(ctx: DraftContext) {
+  const who = ctx.contactFirst || "{{first}}";
   const res = await claude().messages.parse({
     model: MODEL,
     max_tokens: 6000,
-    system: `You write outreach for ${ctx.carrier}, a trucking company, to a shipper's transportation contact. Plain, short, specific, no marketing words, no exclamation marks. Every touch stands alone and rests on facts below. Emails: 60-120 words, subject under 60 characters. LinkedIn: under 280 characters, no subject. Signed "${ctx.signer}". Steps, in order:
+    system: `You write outreach for ${ctx.carrier}, a trucking company, to a shipper's transportation contact. Plain, short, specific, no marketing words, no exclamation marks, no flattery. Every touch stands alone and rests only on the facts below; a reader should feel this was written for their dock and nobody else's. Emails: 60-120 words, subject under 60 characters, no subject line inside the body. LinkedIn: under 280 characters, no subject. Address the person as ${who}${ctx.contactFirst ? "" : " (a placeholder that is replaced with their first name; write it exactly as {{first}})"}. Signed "${ctx.signer}". Steps, in order:
 ${SEQUENCE.map((s, i) => `${i}. ${s.name} (${s.channel}, day ${s.day})`).join("\n")}
 Facts:
-- Contact: ${ctx.contactFirst}${ctx.contactTitle ? ", " + ctx.contactTitle : ""} at ${ctx.facility}, ${ctx.city}
-- ${ctx.kind === "receiver" ? `We deliver to this dock about ${ctx.deliveries} times a year. Lead with that.` : "We have no relationship yet. Lead with the freight fit, not with us."}
-- Their outbound: ${ctx.theirOutbound || "unknown, do not claim a lane"}
-- Our home base: ${ctx.ourHomeLane}. Equipment: ${ctx.equipment}.
+- Dock: ${ctx.facility}, ${ctx.city}
+- Our history there: ${ctx.relationship}
+- Relationship: ${ctx.kind === "receiver" ? "we deliver to them; nobody brokered that relationship. Lead with being on their dock, and with the outbound we could take from there." : ctx.kind === "shipper" ? "we already pick up from them, through brokers. Lead with the loads we already run for them and ask about going direct." : ctx.kind === "both" ? "we both deliver to and pick up from them. Lead with how often our trucks are there." : "no relationship yet. Lead with the freight fit, not with us."}
+- Their outbound: ${ctx.theirOutbound || "unknown; do not claim a lane"}
+- ${ctx.lanesIn ? `We usually arrive from ${ctx.lanesIn}.` : ""}
+- Our home base: ${ctx.ourHome}. We run ${ctx.equipment}, mostly ${ctx.family}.
 - ${ctx.deadhead || "No deadhead claim available; do not invent one."}
-Never invent volumes, rates, or names. If a fact is unknown, write around it.`,
+Never invent volumes, rates, names, or dates. If a fact is unknown, write around it. Vary the angle across touches: the dock visit, their outbound lane, the empty return, a short check-in, a last note.`,
     output_config: { format: zodOutputFormat(DraftsSchema), effort: "medium" },
     messages: [{ role: "user", content: "Write all seven touches." }],
   });
   if (!res.parsed_output) throw new Error("Could not draft the sequence.");
   return res.parsed_output.touches;
 }
+
+/* Fill the placeholder at send time. */
+export const personalize = (text: string, first: string | null) => text.replace(/\{\{first\}\}/g, first || "there");

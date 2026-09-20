@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { syncImapMailbox } from "./mail/imap";
 import { syncGraphMailbox } from "./mail/graph";
-import { runDueSteps } from "./outreach";
+import { runDueSteps, prepareTop } from "./outreach";
 import { collectBatches, submitBatches } from "./ai/batch";
 
 export async function runCron() {
@@ -19,5 +19,9 @@ export async function runCron() {
   try { const collected = await collectBatches(); const submitted = await submitBatches(); batch = { ...collected, ...submitted }; }
   catch (e) { batch = { error: (e as Error).message }; }
   const outreach = await runDueSteps();
-  return { mailboxes: boxes.length, mail, batch, outreach };
+  /* Pre-write sequences for the warmest docks, a few per account per tick. */
+  const drafted: Record<string, number> = {};
+  const accts = await db.select({ id: schema.accounts.id }).from(schema.accounts);
+  for (const a of accts) { if (Date.now() - started > 270_000) break; try { const n = await prepareTop(a.id, 2); if (n) drafted[a.id] = n; } catch { /* next tick */ } }
+  return { mailboxes: boxes.length, mail, batch, outreach, drafted };
 }
