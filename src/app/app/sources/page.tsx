@@ -1,0 +1,52 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { api } from "@/components/api";
+import { useFlash } from "@/components/Flash";
+import { useMe } from "@/components/AppShell";
+import { MailConnect } from "@/components/MailConnect";
+
+export default function Sources() {
+  const { me, refresh } = useMe(); const { flash } = useFlash(); const r = useRouter();
+  const [busy, setBusy] = useState(false);
+  async function scan() {
+    setBusy(true);
+    try { const out = await api<Record<string, { stored: number; errors: string[] }>>("/api/mail/sync", { method: "POST" });
+      const stored = Object.values(out).reduce((n, x) => n + (x.stored || 0), 0);
+      flash(`Scan done. ${stored} new rate con${stored === 1 ? "" : "s"} read.`); refresh(); }
+    catch (x) { flash((x as Error).message, "err"); } finally { setBusy(false); }
+  }
+  async function del() {
+    if (!confirm("Delete every load, contact, sequence and mailbox on this account? This cannot be undone.")) return;
+    await api("/api/account", { method: "DELETE" }); r.push("/");
+  }
+  const KIND: Record<string, string> = { gmail_imap: "Gmail", microsoft: "Outlook", forward: "Forwarding", upload: "Uploads" };
+  return (
+    <>
+      <Link className="back" href="/app">&larr; Back to Prospects</Link>
+      <div className="pane-h"><div><div className="eyebrow">Settings</div><h2>Sources</h2><p>Where your loads come in from</p></div>
+        <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={scan} disabled={busy || !me?.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft")}>{busy ? <><span className="spin" />Scanning…</> : "Scan now"}</button></div></div>
+      {me && me.mailboxes.length > 0 && (
+        <div className="panel"><h3>Connected</h3>
+          <table style={{ border: "none" }}><thead><tr><th>Source</th><th>Address</th><th>Status</th><th>Last read</th></tr></thead><tbody>
+            {me.mailboxes.map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead">{KIND[m.kind] || m.kind}</td><td data-label="Address" className="num">{m.address}</td>
+              <td data-label="Status">{m.status === "error" ? <span className="tag t-flag" title={m.error || ""}>ERROR</span> : m.historyDone ? <span className="tag t-ver">UP TO DATE</span> : <span className="tag t-obs">READING HISTORY</span>}</td>
+              <td data-label="Last read" className="num">{m.lastSyncAt ? new Date(m.lastSyncAt).toLocaleString() : "—"}</td></tr>)}
+          </tbody></table>
+          {me.mailboxes.some((m) => m.error) && <p className="hint" style={{ color: "var(--red)" }}>{me.mailboxes.filter((m) => m.error).map((m) => `${m.address}: ${m.error}`).join(" · ")}</p>}
+        </div>
+      )}
+      <MailConnect me={me} onDone={refresh} compact />
+      <div className="panel" style={{ marginTop: 20 }}><h3>Where the data comes from</h3>
+        <p className="ph">Some of it is yours. Some we buy and pass along. You should be able to tell which is which on any figure you see.</p>
+        <div className="srcgrid" style={{ marginTop: 18 }}>
+          {[["Yours", "Your rate cons", "What you haul, where, for whom, at what rate. Read once, kept private, and the basis of every match."], ["Network", "Facility observations", "Published only once enough unrelated carriers have moved freight through a dock that no single load can be traced back."], ["Bought", "Emails & phones", `Contact providers tried in order until one returns a verified result.${me?.features.providers.length ? " Live: " + me.features.providers.join(", ") + "." : " None configured yet."}`], ["Free", "FMCSA", "Operating authority and status. Public record, never charged for."]].map(([b, h, p]) => <div className="src" key={h}><div className="big">{b}</div><h4>{h}</h4><p>{p}</p></div>)}
+        </div>
+      </div>
+      <div className="panel" id="data"><h3>Your data</h3>
+        <p className="ph">Your rates and broker names are never shown to another customer, and Direct Shipper never surfaces a shipper to anyone because you hauled it for their broker. Delete everything and your freight stops counting toward aggregate figures immediately.</p>
+        <button className="btn-ghost" onClick={del}>Delete my data</button></div>
+    </>
+  );
+}

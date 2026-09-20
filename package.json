@@ -1,0 +1,46 @@
+{
+  "name": "directshipper",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "demo": "tsx scripts/demo.ts",
+    "cron": "tsx scripts/cron.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "bcryptjs": "^3.0.2",
+    "drizzle-orm": "^0.45.2",
+    "imapflow": "^2.0.5",
+    "jose": "^6.0.11",
+    "mailparser": "^3.7.3",
+    "next": "^16.3.5",
+    "nodemailer": "^7.0.6",
+    "pdf-parse": "^2.1.1",
+    "postgres": "^3.4.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "stripe": "^22.6.2",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/imapflow": "^1.0.20",
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^22.19.0",
+    "@types/nodemailer": "^7.0.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
