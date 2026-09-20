@@ -14,7 +14,7 @@ const S = z.string();
 const StopW = z.object({ k: z.enum(["p", "d"]), f: S, a: S, c: S, s: S, z: S, t: S });
 const WireSchema = z.object({
   ok: z.boolean(),
-  ld: S, bn: S, bm: S, sh: S,
+  ld: S, bn: S, bm: S, cn: S, cc: S, sh: S,
   st: z.array(StopW),
   cm: S,
   fa: z.enum(["frozen", "refrigerated", "produce", "beverage", "dry", "other", "unknown"]),
@@ -28,6 +28,7 @@ export type RateCon = {
   is_rate_confirmation: boolean;
   load_number: string | null;
   broker: { name: string | null; mc: string | null; email: string | null };
+  carrier: { name: string | null; mc: string | null };   // the carrier the load was tendered to (one of the account's authorities)
   shipper: string | null;
   stops: Stop[];
   pickup: Stop;      // first pickup
@@ -41,6 +42,7 @@ export type RateCon = {
   confidence: number;
 };
 const n = (v: string) => (v && v.trim() ? v.trim() : null);
+const digits = (v: string) => { const d = (v || "").replace(/\D/g, ""); return d || null; };   // "MC 884213" -> "884213"
 const place = (p: Wire["st"][number]): Stop => ({ kind: p.k === "p" ? "pickup" : "drop", facility: n(p.f), street: n(p.a), city: n(p.c), state: n(p.s), zip: n(p.z), at: n(p.t) });
 const EMPTY = (kind: Stop["kind"]): Stop => ({ kind, facility: null, street: null, city: null, state: null, zip: null, at: null });
 export function toRateCon(w: Wire): RateCon {
@@ -48,7 +50,8 @@ export function toRateCon(w: Wire): RateCon {
   const pickups = stops.filter((s) => s.kind === "pickup"), drops = stops.filter((s) => s.kind === "drop");
   return {
     is_rate_confirmation: w.ok, load_number: n(w.ld),
-    broker: { name: n(w.bn), mc: n(w.bm), email: null },
+    broker: { name: n(w.bn), mc: digits(w.bm), email: null },
+    carrier: { name: n(w.cn), mc: digits(w.cc) },
     shipper: n(w.sh), stops, pickup: pickups[0] || EMPTY("pickup"), delivery: drops[drops.length - 1] || EMPTY("drop"),
     commodity: n(w.cm), family: w.fa, equipment: w.eq,
     temp_f: w.tf, miles: w.mi, rate_total: w.rt, confidence: 0.9,
@@ -60,7 +63,7 @@ export function parseWireJson(text: string): RateCon {
 
 const SYSTEM = `You read trucking paperwork for a small carrier. Given one document, return the rate confirmation's fields as JSON with these keys:
 ok: true only if this is a carrier rate confirmation / load tender for a truckload shipment (not an invoice, BOL alone, newsletter).
-ld: load or reference number. bn: broker name, the party paying the carrier (never the carrier). bm: broker MC digits only.
+ld: load or reference number. bn: broker name, the party paying the carrier (never the carrier). bm: broker MC digits only. cn: the carrier the load is tendered to, as written (the trucking company, never the broker). cc: that carrier's MC digits only.
 sh: the company that owns the freight if named apart from the pickup facility (a "Customer" or "Account" line at a 3PL), else "".
 st: every stop in order. k: "p" pickup or "d" drop. f facility name, a street, c city, s two-letter state, z zip, t ISO date/datetime. A tender with two pickups and one drop has three stops; never merge or skip one.
 cm: commodity as written. fa: frozen (<=0F or the word frozen) | refrigerated (33-45F, chilled) | produce (fresh fruit/veg) | beverage | dry | other | unknown.

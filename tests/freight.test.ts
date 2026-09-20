@@ -59,7 +59,7 @@ describe("reader input and output", () => {
     expect(t).not.toContain("indemnify");
   });
   it("turns the compact wire JSON into a full rate con with every stop", () => {
-    const rc = parseWireJson(JSON.stringify({ ok: true, ld: "4412", bn: "Midland", bm: "884213", sh: "",
+    const rc = parseWireJson(JSON.stringify({ ok: true, ld: "4412", bn: "Midland", bm: "884213", cn: "Ruiz Trucking LLC", cc: "MC 1177204", sh: "",
       st: [{ k: "p", f: "Lineage", a: "900 E M St", c: "Wilmington", s: "CA", z: "", t: "2023-10-23" }, { k: "p", f: "Jessie Lord Bakery", a: "21100 S Western", c: "Torrance", s: "CA", z: "", t: "" }, { k: "d", f: "KeHE", a: "4650 Newcastle", c: "Stockton", s: "CA", z: "", t: "2023-10-24" }],
       cm: "frozen bakery", fa: "frozen", eq: "reefer", tf: -10, mi: 380, rt: 1130 }));
     expect(rc.stops).toHaveLength(3);
@@ -67,5 +67,7 @@ describe("reader input and output", () => {
     expect(rc.delivery.facility).toBe("KeHE");
     expect(rc.shipper).toBeNull();
     expect(rc.rate_total).toBe(1130);
+    expect(rc.carrier.name).toBe("Ruiz Trucking LLC");
+    expect(rc.carrier.mc).toBe("1177204");
   });
 });

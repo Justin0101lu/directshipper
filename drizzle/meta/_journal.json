@@ -57,6 +57,13 @@
       "when": 1789923003980,
       "tag": "0007_narrow_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789933719655,
+      "tag": "0008_bouncy_joystick",
+      "breakpoints": true
     }
   ]
 }

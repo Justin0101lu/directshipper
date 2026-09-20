@@ -40,7 +40,7 @@ export const GET = withSession(async (req, s) => {
       const st = byLoad[l.id] || [];
       const med = l.originCity && l.destCity ? laneMedian(loads, l.originCity, l.destCity) : null;
       return {
-        id: l.id, date: l.pickupAt?.toISOString().slice(0, 10) ?? null, loadNumber: l.loadNumber, broker: l.broker, brokerMc: l.brokerMc,
+        id: l.id, date: l.pickupAt?.toISOString().slice(0, 10) ?? null, loadNumber: l.loadNumber, broker: l.broker, brokerMc: l.brokerMc, authorityId: l.authorityId, carrierName: l.carrierName,
         lane: `${l.originCity ?? "?"} ${l.originState ?? ""} → ${l.destCity ?? "?"} ${l.destState ?? ""}`, equipment: l.equipment, family: l.family,
         miles: l.miles, rate: l.rate, perMile: l.perMile, median: med, commodity: l.commodity,
         pickups: st.filter((x) => x.kind === "pickup").map((x) => ({ facilityId: x.facilityId, city: x.city, state: x.state })),

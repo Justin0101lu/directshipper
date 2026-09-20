@@ -35,6 +35,7 @@ function rc(p: typeof PICKUPS[number], d: typeof DESTS[number], br: string[], t:
   return {
     is_rate_confirmation: true, load_number: String(4400000 + Math.floor(rnd() * 90000)),
     broker: { name: br[0], mc: br[1], email: `dispatch@${br[0].toLowerCase().replace(/[^a-z]/g, "")}.com` },
+    carrier: rnd() < 0.7 ? { name: "Ruiz Trucking LLC", mc: "884213" } : { name: "RT Reefer Express Inc", mc: "1177204" },
     shipper: p.shipper,
     stops: [], pickup: { kind: "pickup", facility: p.facility, street: p.street, city: p.city, state: p.state, zip: p.zip, at: t.toISOString() },
     delivery: { kind: "drop", facility: d.facility, street: d.street, city: d.city, state: d.state, zip: null, at: new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3).toISOString() },

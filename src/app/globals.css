@@ -735,3 +735,7 @@ textarea{font-family:var(--sans);font-size:14.5px;line-height:1.5;padding:11px 1
 .settings-link.back-link{margin-top:14px;font-size:13px;color:var(--faint)}
 .settings-body{min-width:0}
 @media (max-width:860px){ .settings{grid-template-columns:1fr;gap:12px} .settings-nav{position:static;flex-direction:row;flex-wrap:wrap;gap:6px} .settings-nav .eyebrow{width:100%} .settings-link.back-link{margin-top:0} }
+
+.auth-tag{color:var(--blue)}
+.auto-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--green);border-radius:2px;padding:12px 16px;margin-bottom:16px}
+.auto-ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}

@@ -30,7 +30,14 @@ async function sendingMailbox(accountId: string, preferId?: string | null) {
   const boxes = await sendingMailboxes(accountId);
   return (preferId && boxes.find((m) => m.id === preferId)) || boxes[0] || null;
 }
-const signerOf = (mb: { senderName: string | null; address: string } | null, fallback: string) => mb?.senderName || fallback;
+/* "Justin Ruiz, owner · RT Reefer Express Inc": the person and the company the mailbox speaks for. */
+async function signerOf(mb: { senderName: string | null; address: string; authorityId?: string | null } | null, fallback: string) {
+  if (!mb) return fallback;
+  let company = "";
+  if (mb.authorityId) { const db = await getDb(); const [a] = await db.select({ name: schema.authorities.name }).from(schema.authorities).where(eq(schema.authorities.id, mb.authorityId)); company = a?.name || ""; }
+  const person = mb.senderName || fallback;
+  return company && !person.toLowerCase().includes(company.toLowerCase()) ? `${person}\n${company}` : person;
+}
 
 export async function setSender(accountId: string, sequenceId: string, mailboxId: string) {
   const db = await getDb();
@@ -134,7 +141,7 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   const mb = await sendingMailbox(accountId, seq.mailboxId);
   if (!mb) throw new Error("Connect a Gmail or Outlook mailbox to send from.");
   const [user] = await db.select().from(schema.users).where(eq(schema.users.accountId, accountId)).limit(1);
-  const signer = signerOf(mb, user?.name || acct.company);
+  const signer = await signerOf(mb, user?.name || acct.company);
   const [t] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
   const first = has.has("name") && c.name ? c.name.split(" ")[0] : null;
   const subject = personalize(edited?.subject ?? t.subject ?? "Your outbound freight", first, signer);
@@ -168,7 +175,7 @@ export async function runDueSteps() {
       const first = has.has("name") && c.name ? c.name.split(" ")[0] : null;
       const mbx = await sendingMailbox(seq.accountId, fresh.mailboxId);
       const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, seq.accountId));
-      const signer = signerOf(mbx, acct.company);
+      const signer = await signerOf(mbx, acct.company);
       if (t.channel === "email") {
         const mb = mbx;
         if (!mb || !c.email || c.emailStatus === "bounced") { await db.update(schema.sequences).set({ status: "paused" }).where(eq(schema.sequences.id, seq.id)); continue; }
@@ -279,4 +286,52 @@ export async function cards(accountId: string): Promise<Card[]> {
   }
   const order: Record<Card["state"], number> = { replied: 0, ready: 1, copy: 2, needs_email: 3, needs_people: 4, needs_draft: 5, active: 6, paused: 7, held: 8, done: 9 };
   return out.sort((a, b) => order[a.state] - order[b.state] || (b.rel?.warmth ?? 0) - (a.rel?.warmth ?? 0));
+}
+
+
+/* ---------- autopilot ----------
+   The sales agent. Runs from cron for accounts set to "send": takes the
+   warmest clear docks that have no sequence running, finds the people
+   (free), reveals the best-titled person's name and email (tokens, inside
+   the daily cap), attaches them, and sends the opener from the account's
+   sending mailbox. Follow-ups and reply handling are already automatic.
+   Never a held dock, never past autoPerDay, never on Free. */
+export async function autopilotTick(accountId: string) {
+  const db = await getDb();
+  const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
+  if (!acct || acct.autopilot !== "send") return { started: 0, reason: "off" };
+  if (!PLANS[acct.plan as PlanId].outreach) return { started: 0, reason: "plan" };
+  const mb = await sendingMailbox(accountId);
+  if (!mb) return { started: 0, reason: "no mailbox" };
+  const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+  const [today] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches).innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
+    .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.step, 0), eq(schema.touches.status, "sent"), sql`${schema.touches.sentAt} >= ${dayStart}`));
+  let budget = acct.autoPerDay - Number(today?.n || 0);
+  if (budget <= 0) return { started: 0, reason: "daily limit" };
+  const { discover, reveal, visibleContacts } = await import("@/lib/enrich");
+  const docks = (await rankedDocks(accountId, 25)).filter((d) => d.deliveries >= 3);
+  let started = 0;
+  for (const d of docks) {
+    if (budget <= 0) break;
+    const [s] = await db.select().from(schema.sequences).where(and(eq(schema.sequences.accountId, accountId), eq(schema.sequences.facilityId, d.facilityId)));
+    if (s && s.status !== "draft") continue;
+    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;
+    try {
+      const seq = s || await prepareDock(accountId, d.facilityId);
+      let people = (await visibleContacts(accountId, [d.facilityId]))[d.facilityId] || [];
+      if (!people.length) { await discover(d.facilityId); people = (await visibleContacts(accountId, [d.facilityId]))[d.facilityId] || []; }
+      const best = bestPerson(people);
+      if (!best) continue;
+      if (!best.name) { const r = await reveal(accountId, best.id, "name"); if (!r.found) continue; }
+      if (!best.email) { const r = await reveal(accountId, best.id, "email"); if (!r.found) continue; }
+      await attachContact(accountId, seq.id, best.id);
+      await approveOpener(accountId, seq.id);
+      started++; budget--;
+    } catch (e) {
+      /* a token cap or a missing provider stops the run quietly; the card shows the state */
+      console.error("[autopilot]", d.name, (e as Error).message);
+      if (/cap|tokens|provider/i.test((e as Error).message)) break;
+    }
+  }
+  return { started };
 }

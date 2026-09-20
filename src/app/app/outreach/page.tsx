@@ -47,6 +47,7 @@ export default function Outreach() {
   const copied = (t: Touch) => run(`copy:${t.id}`, async () => { navigator.clipboard?.writeText(t.body); await api("/api/outreach/copied", { method: "POST", json: { touchId: t.id } }); }, "Copied. Paste it into LinkedIn; the step is marked done.");
   const setSender = (c: Card, mailboxId: string) => run(`sender:${c.facilityId}`, () => api("/api/outreach/sender", { method: "POST", json: { sequenceId: c.sequence!.id, mailboxId } }), "Sender set.");
   const senders = (me?.mailboxes || []).filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft");
+  const setAuto = (autopilot: string, autoPerDay?: number) => run("auto", () => api("/api/account/settings", { method: "POST", json: { autopilot, autoPerDay } }), autopilot === "send" ? "Autopilot on. New docks start every day inside your limits; you will see replies here." : autopilot === "draft" ? "Drafting only. Nothing sends until you approve." : "Autopilot off.");
   const pause = (c: Card, on: boolean) => run(`pause:${c.facilityId}`, () => api("/api/outreach/pause", { method: "POST", json: { sequenceId: c.sequence!.id, on } }), on ? "Paused." : "Resumed.");
 
   const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "held" ? c.state === "held" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "paused"].includes(c.state) : c.state === filter);
@@ -107,6 +108,15 @@ export default function Outreach() {
     <>
       <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.filter((c) => c.hold.clear).length} of ${d.cards.length} docks have no hold on file. Sequences are written from your history with each dock; held docks are never touched.` : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/settings/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
+      {me && (
+        <div className="auto-bar">
+          <div><b>Autopilot</b><span className="small"> · {me.autopilot === "send" ? `starting up to ${me.autoPerDay} new docks a day, inside your ${me.tokens.cap || "unlimited"}-token daily cap, never a held dock` : me.autopilot === "draft" ? "writing sequences for your warmest docks; you approve every opener" : "off; nothing is drafted or sent on its own"}</span></div>
+          <div className="auto-ctl">
+            {(["off", "draft", "send"] as const).map((k) => <button key={k} className={`chip${me.autopilot === k ? " on" : ""}`} disabled={busy === "auto" || (k === "send" && (!canSend || !hasMailbox))} title={k === "send" && !canSend ? "Sending needs Carrier or Fleet" : k === "send" && !hasMailbox ? "Connect a sending mailbox first" : ""} onClick={() => setAuto(k)}>{k === "off" ? "Off" : k === "draft" ? "Draft only" : "Send"}</button>)}
+            {me.autopilot === "send" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>new docks/day <input type="number" min={0} max={50} defaultValue={me.autoPerDay} onBlur={(e) => Number(e.target.value) !== me.autoPerDay && setAuto("send", Number(e.target.value))} style={{ width: 64, padding: "5px 8px", fontSize: 13 }} /></label>}
+          </div>
+        </div>
+      )}
       {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting, finding contacts and reading replies are free. Sends are unlimited on both paid plans.</p></div>}
       <div className="chips">{FILTERS.map(([k, label]) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}<i>{counts(k)}</i></button>)}</div>
       {d && !cards.length && <div className="empty"><h3>Nothing here yet</h3><p>{d.cards.length ? "No docks under this filter." : "Docks appear as your rate cons are read. Each one gets a sequence written from your history there."}</p></div>}

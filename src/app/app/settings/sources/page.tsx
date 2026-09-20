@@ -16,6 +16,10 @@ export default function Sources() {
     catch (x) { flash((x as Error).message, "err"); } finally { setBusy(false); }
   }
   const KIND: Record<string, string> = { gmail_imap: "Gmail", microsoft: "Outlook", forward: "Forwarding", upload: "Uploads" };
+  async function setIdentity(id: string, patch: { senderName?: string; authorityId?: string | null }) {
+    try { await api(`/api/mail/${id}`, { method: "PATCH", json: patch }); refresh(); } catch (x) { flash((x as Error).message, "err"); }
+  }
+  async function renameAuthority(id: string, name: string) { try { await api("/api/authorities", { method: "PATCH", json: { id, name } }); refresh(); } catch (x) { flash((x as Error).message, "err"); } }
   async function remove(id: string, address: string) {
     if (!confirm(`Disconnect ${address}? The stored password is deleted. Loads already read stay.`)) return;
     try { await api(`/api/mail/${id}`, { method: "DELETE" }); flash(`${address} disconnected.`); refresh(); } catch (x) { flash((x as Error).message, "err"); }
@@ -50,6 +54,18 @@ export default function Sources() {
           {me.mailboxes.some((m) => m.error) && <p className="hint" style={{ color: "var(--red)" }}>{me.mailboxes.filter((m) => m.error).map((m) => `${m.address}: ${m.error}`).join(" · ")}</p>}
         </div>
       )}
+      {me && me.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft") && (
+        <div className="panel"><h3>Who sends outreach</h3><p className="ph">Each sending mailbox speaks for one person and one of your companies. Outreach from it is signed that way, and every sequence picks its sender. Holds are account-wide: switching companies never clears a held dock.</p>
+          <table style={{ border: "none" }}><thead><tr><th>Mailbox</th><th>Signed as</th><th>Company</th></tr></thead><tbody>
+            {me.mailboxes.filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft").map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead num">{m.address}</td>
+              <td data-label="Signed as"><input type="text" defaultValue={m.senderName || ""} placeholder="Justin Ruiz, owner" onBlur={(e) => e.target.value !== (m.senderName || "") && setIdentity(m.id, { senderName: e.target.value })} style={{ padding: "7px 10px", fontSize: 14 }} /></td>
+              <td data-label="Company"><select value={m.authorityId || ""} onChange={(e) => setIdentity(m.id, { authorityId: e.target.value || null })} style={{ padding: "7px 10px", fontSize: 14 }}><option value="">{me.company}</option>{me.authorities.map((a) => <option key={a.id} value={a.id}>{a.name}{a.mc ? ` · MC ${a.mc}` : ""}</option>)}</select></td></tr>)}
+          </tbody></table></div>)}
+      {me && me.authorities.length > 0 && (
+        <div className="panel"><h3>Your companies</h3><p className="ph">Found on your rate cons: the carrier each load was tendered to. Fix a spelling here; the MC stays.</p>
+          <table style={{ border: "none" }}><thead><tr><th>Company</th><th>MC</th><th className="right">Loads</th></tr></thead><tbody>
+            {me.authorities.map((a) => <tr key={a.id} style={{ cursor: "default" }}><td className="lead"><input type="text" defaultValue={a.name} onBlur={(e) => e.target.value.trim() && e.target.value !== a.name && renameAuthority(a.id, e.target.value)} style={{ padding: "7px 10px", fontSize: 14, maxWidth: 360 }} /></td><td data-label="MC" className="num">{a.mc || "\u2014"}</td><td data-label="Loads" className="num right">{a.loads}</td></tr>)}
+          </tbody></table></div>)}
       <MailConnect me={me} onDone={refresh} compact />
       <div className="panel" style={{ marginTop: 20 }}><h3>Where the data comes from</h3>
         <p className="ph">Some of it is yours. Some we buy and pass along. You should be able to tell which is which on any figure you see.</p>

@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { syncImapMailbox } from "./mail/imap";
 import { syncGraphMailbox } from "./mail/graph";
-import { runDueSteps, prepareTop } from "./outreach";
+import { runDueSteps, prepareTop, autopilotTick } from "./outreach";
 import { collectBatches, submitBatches } from "./ai/batch";
 
 export async function runCron() {
@@ -22,6 +22,11 @@ export async function runCron() {
   /* Pre-write sequences for the warmest docks, a few per account per tick. */
   const drafted: Record<string, number> = {};
   const accts = await db.select({ id: schema.accounts.id }).from(schema.accounts);
-  for (const a of accts) { if (Date.now() - started > 270_000) break; try { const n = await prepareTop(a.id, 2); if (n) drafted[a.id] = n; } catch { /* next tick */ } }
-  return { mailboxes: boxes.length, mail, batch, outreach, drafted };
+  const agent: Record<string, number> = {};
+  for (const a of accts) {
+    if (Date.now() - started > 270_000) break;
+    try { const n = await prepareTop(a.id, 2); if (n) drafted[a.id] = n; } catch { /* next tick */ }
+    try { const r = await autopilotTick(a.id); if (r.started) agent[a.id] = r.started; } catch { /* next tick */ }
+  }
+  return { mailboxes: boxes.length, mail, batch, outreach, drafted, agent };
 }

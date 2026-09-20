@@ -14,7 +14,7 @@ export const GET = withSession(async (_req, s) => {
   return json(rows.map((r) => {
     const med = r.originCity && r.destCity ? laneMedian(rows, r.originCity, r.destCity) : null;
     return {
-      id: r.id, date: r.pickupAt?.toISOString().slice(0, 10) ?? null, loadNumber: r.loadNumber, broker: r.broker, brokerMc: r.brokerMc, shipper: r.shipper,
+      id: r.id, date: r.pickupAt?.toISOString().slice(0, 10) ?? null, loadNumber: r.loadNumber, broker: r.broker, brokerMc: r.brokerMc, shipper: r.shipper, authorityId: r.authorityId, carrierName: r.carrierName,
       facility: r.originId ? facs.get(r.originId) : null, dest: r.destId ? facs.get(r.destId) : null,
       lane: `${r.originCity ?? "?"} ${r.originState ?? ""} → ${r.destCity ?? "?"} ${r.destState ?? ""}`, equipment: r.equipment, family: r.family,
       miles: r.miles, rate: r.rate, perMile: r.perMile, direct: r.direct, confidence: r.confidence,

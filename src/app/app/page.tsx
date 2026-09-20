@@ -6,7 +6,7 @@ import { useFlash } from "@/components/Flash";
 import { useMe } from "@/components/AppShell";
 
 type StopRef = { facilityId: string | null; city: string | null; state: string | null };
-type Load = { id: string; date: string | null; loadNumber: string | null; broker: string | null; lane: string; equipment: string | null; family: string | null; miles: number | null; rate: number | null; perMile: number | null; median: number | null; commodity: string | null; pickups: StopRef[]; drops: StopRef[] };
+type Load = { id: string; date: string | null; loadNumber: string | null; broker: string | null; authorityId: string | null; carrierName: string | null; lane: string; equipment: string | null; family: string | null; miles: number | null; rate: number | null; perMile: number | null; median: number | null; commodity: string | null; pickups: StopRef[]; drops: StopRef[] };
 type Fac = { id: string; name: string; city: string; state: string; type: string; shipper: string | null; discoveredAt: string | null };
 type Outbound = { ok: true; loadsPerMonth: number; accounts: number; lanes: { dest: string; pct: number }[]; equipment: string | null; family: string | null } | { ok: false; accounts: number };
 type Dock = { facilityId: string; name: string; city: string; deliveries: number; pickups: number; outbound: Outbound; standing: string; why: string };
@@ -136,7 +136,7 @@ export default function Prospects() {
             {loads.slice(0, show).flatMap((l) => {
               const row = (
                 <tr key={l.id} style={{ cursor: "default" }}>
-                  <td className="num" data-label="Date">{l.date || ""}{l.loadNumber ? <div className="small">#{l.loadNumber}</div> : null}</td>
+                  <td className="num" data-label="Date">{l.date || ""}{l.loadNumber ? <div className="small">#{l.loadNumber}</div> : null}{(me?.authorities.length ?? 0) > 1 && <div className="small auth-tag">{me?.authorities.find((a) => a.id === l.authorityId)?.name || l.carrierName || "\u2014"}</div>}</td>
                   <td data-label="Shipper">{dockCell(l.pickups, "pickup", l.id)}</td>
                   <td data-label="Receiver">{dockCell(l.drops, "drop", l.id)}</td>
                   <td data-label="Broker" className="lv-dim">{l.broker || "—"}</td>

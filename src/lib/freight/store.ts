@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { RateCon, Stop } from "@/lib/ai/parse";
 import { facilityKey, facilityType, normCity, normState } from "./facilities";
@@ -20,6 +20,25 @@ async function upsertFacility(f: Stop, shipper: string | null) {
   return row.id;
 }
 
+/* Match the carrier party on the rate con to one of the account's authorities,
+   by MC first, then by name; create it when new. */
+const normName = (v: string) => v.toLowerCase().replace(/\b(llc|inc|corp|co|ltd|trucking|transport(ation)?|logistics|express|carriers?|lines?|freight)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+async function resolveAuthority(accountId: string, name: string | null, mc: string | null) {
+  if (!name && !mc) return null;
+  const db = await getDb();
+  const rows = await db.select().from(schema.authorities).where(eq(schema.authorities.accountId, accountId));
+  const mcDigits = mc ? mc.replace(/\D/g, "") : "";
+  let hit = mcDigits ? rows.find((r) => r.mc === mcDigits) : undefined;
+  if (!hit && name) hit = rows.find((r) => normName(r.name) === normName(name));
+  if (hit) {
+    if (!hit.mc && mcDigits) await db.update(schema.authorities).set({ mc: mcDigits }).where(eq(schema.authorities.id, hit.id));
+    await db.update(schema.authorities).set({ loads: sql`${schema.authorities.loads} + 1` }).where(eq(schema.authorities.id, hit.id));
+    return hit.id;
+  }
+  const [row] = await db.insert(schema.authorities).values({ accountId, name: name || `MC ${mcDigits}`, mc: mcDigits || null, loads: 1 }).returning();
+  return row.id;
+}
+
 function family(rc: RateCon): string {
   if (rc.family === "refrigerated") return "frozen";  // one family for temp-controlled food that is not produce
   if (rc.family === "unknown") return rc.equipment === "reefer" ? "frozen" : "dry";
@@ -37,11 +56,13 @@ export async function storeLoad(accountId: string, mailboxId: string | null, sou
   for (const s of stops) facIds.push(await upsertFacility(s, s.kind === "pickup" ? rc.shipper : null));
   const originId = facIds[stops.indexOf(first)] ?? null;
   const destId = facIds[stops.indexOf(last)] ?? null;
+  const authorityId = await resolveAuthority(accountId, rc.carrier?.name ?? null, rc.carrier?.mc ?? null);
   const pickupAt = first.at ? new Date(first.at) : receivedAt;
   const perMile = rc.rate_total && rc.miles ? Math.round((rc.rate_total / rc.miles) * 100) / 100 : null;
   const [load] = await db.insert(schema.loads).values({
     accountId, mailboxId, sourceRef, docHash: docHash ?? null, loadNumber: rc.load_number,
     broker: rc.broker.name, brokerMc: rc.broker.mc, brokerEmail: rc.broker.email,
+    carrierName: rc.carrier?.name ?? null, carrierMc: rc.carrier?.mc ?? null, authorityId,
     shipper: rc.shipper, originId, destId,
     originCity: normCity(first.city), originState: normState(first.state),
     destCity: normCity(last.city), destState: normState(last.state),

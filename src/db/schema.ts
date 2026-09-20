@@ -15,6 +15,8 @@ export const accounts = pgTable("accounts", {
   tokensMonthly: integer("tokens_monthly").notNull().default(20),
   tokensExtra: integer("tokens_extra").notNull().default(0),
   dailyCap: integer("daily_cap").notNull().default(25),
+  autopilot: text("autopilot").notNull().default("draft"),   // off | draft | send
+  autoPerDay: integer("auto_per_day").notNull().default(3),  // new docks the agent may start per day in send mode
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   forwardToken: text("forward_token").notNull().$defaultFn(() => crypto.randomUUID().slice(0, 8)),
@@ -30,6 +32,17 @@ export const users = pgTable("users", {
   createdAt: now(),
 }, (t) => [uniqueIndex("users_email_idx").on(t.email)]);
 
+/* A carrier's operating authorities (MC numbers). Discovered from the
+   carrier party on each rate con; a carrier with three MCs sees three. */
+export const authorities = pgTable("authorities", {
+  id: id(),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  mc: text("mc"),
+  loads: integer("loads").notNull().default(0),
+  createdAt: now(),
+}, (t) => [index("authorities_account_idx").on(t.accountId)]);
+
 /* ---------- mail sources ---------- */
 export const mailboxes = pgTable("mailboxes", {
   id: id(),
@@ -37,6 +50,7 @@ export const mailboxes = pgTable("mailboxes", {
   kind: text("kind").notNull(),                 // gmail_imap | microsoft | forward | upload
   address: text("address").notNull(),
   senderName: text("sender_name"),              // how outreach from this mailbox is signed, e.g. "Justin Ruiz, owner"
+  authorityId: text("authority_id").references(() => authorities.id, { onDelete: "set null" }),   // which of the carrier's companies this mailbox speaks for
   secret: text("secret"),                       // encrypted: app password, or OAuth refresh token
   lastUid: integer("last_uid").notNull().default(0),
   queued: integer("queued").notNull().default(0),        // messages still to read after the last pass
@@ -93,6 +107,9 @@ export const loads = pgTable("loads", {
   broker: text("broker"),
   brokerMc: text("broker_mc"),
   brokerEmail: text("broker_email"),
+  carrierName: text("carrier_name"),            // the carrier party on the rate con, as written
+  carrierMc: text("carrier_mc"),
+  authorityId: text("authority_id").references(() => authorities.id, { onDelete: "set null" }),
   shipper: text("shipper"),
   originId: text("origin_id").references(() => facilities.id),
   destId: text("dest_id").references(() => facilities.id),
