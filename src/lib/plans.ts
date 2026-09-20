@@ -19,13 +19,13 @@ export const PLANS: Record<PlanId, {
     off: ["Autopilot does not send", "No broker agreement upload"] },
   carrier: { id: "carrier", name: "Carrier", price: 99, monthly: 200, extra: 0.4, outreach: true, export: true, agreements: true, inboxes: 1, perDay: 3,
     who: "1 to 20 trucks, nobody selling",
-    perks: ["Autopilot on — Draft or Send", "1 sending inbox", "Up to 3 new shippers a day", "Lookalike shippers", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
+    perks: ["The right person at every dock — the one who books freight, with a verified email", "Autopilot works 3 new shippers a day, the safe pace for one inbox", "1 sending inbox", "Lookalike shippers", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
   fleet: { id: "fleet", name: "Fleet", price: 299, monthly: 600, extra: 0.3, outreach: true, export: true, agreements: true, inboxes: 5, perDay: 10,
     who: "20 to 100 trucks",
-    perks: ["Everything in Carrier", "Up to 5 sending inboxes, each with its own company", "Up to 10 new shippers a day", "Load history import — CSV & scheduled report", "Unlimited users"], off: [] },
+    perks: ["Everything in Carrier", "Autopilot works 10 new shippers a day across your inboxes", "Up to 5 sending inboxes, each with its own company", "Load history import — CSV & scheduled report", "Unlimited users"], off: [] },
   enterprise: { id: "enterprise", name: "Enterprise", price: 799, monthly: 2000, extra: 0.25, outreach: true, export: true, agreements: true, inboxes: 99, perDay: 50,
     who: "100+ trucks, several authorities",
-    perks: ["Everything in Fleet", "Unlimited sending inboxes and shippers a day", "Priority parsing", "An onboarding call, only if you want one"], off: [] },
+    perks: ["Everything in Fleet", "No pace limit, unlimited sending inboxes", "Priority parsing", "An onboarding call, only if you want one"], off: [] },
 };
 export const WELCOME_TOKENS = 10;          // one-time, on signup, never expire
 export const PACKS = [50, 200, 1000];      // pack sizes; price = size × plan.extra

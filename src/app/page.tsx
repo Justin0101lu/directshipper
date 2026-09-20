@@ -24,7 +24,8 @@ export default function Landing() {
       </div></div>
 
       <div className="strip"><div className="strip-in">
-        <span><i className="dot"></i>Works alongside any TMS, or a spreadsheet</span>
+        <span><i className="dot"></i>The person who books freight, not a switchboard</span>
+        <span><i className="dot"></i>Verified emails, refunded if they bounce</span>
         <span><i className="dot"></i>Every figure shows how many loads it rests on</span>
         <span><i className="dot"></i>Your own data is never shown to anyone else</span>
       </div></div>
@@ -35,7 +36,7 @@ export default function Landing() {
         <div className="plays">
           {[
             ["01", "Find out what your freight is really worth", "Your whole history read back to you: commodity mix, length of haul, rate per mile by lane. Most carriers discover their busiest lane is their worst paying one.", "FREE", "Unlimited"],
-            ["02", "Take the docks you already back into", "You are on their property every week and no broker put you there. Most of them ship outbound too, and that freight is theirs to award.", "FREE", "Contacts cost tokens"],
+            ["02", "Reach the person who actually books the freight", "At every dock you already back into, Direct Shipper finds the transportation, logistics or shipping manager, not a front desk. You see their title before you spend a token, the email is verified before it is sent, and a bounce is refunded.", "1 token", "per verified email"],
             ["03", "Win the freight you already know how to haul", "Facilities moving the same commodity on the same lanes you run well, with no broker in between. Your own history does the targeting.", "1 token", "per new shipper"],
             ["04", "Let the agent work them until they answer", "Seven touches over 30 days, each one written from your own freight history and signed by you, from the company you choose. On Send, the agent starts new shippers every day on its own, never one you are under a hold on, and stops the second they reply.", "FREE", "Sends included on paid plans"],
             ["05", "Ask your freight a question", "“Who did I haul frozen for out of Ontario last winter?” Answered from your own rate cons, with the source on every answer.", "FREE", "Unlimited"],
