@@ -21,9 +21,12 @@ async function sendingMailbox(accountId: string) {
 
 export async function startSequence(accountId: string, contactId: string) {
   const db = await getDb();
-  const [c] = await db.select().from(schema.contacts).where(and(eq(schema.contacts.id, contactId), eq(schema.contacts.accountId, accountId)));
+  const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId));
   if (!c) throw new Error("No contact");
-  if (!c.name) throw new Error("Reveal the contact's name first, so the touches can address someone.");
+  const paid = await db.select({ f: schema.reveals.field }).from(schema.reveals).where(and(eq(schema.reveals.accountId, accountId), eq(schema.reveals.contactId, contactId)));
+  const has = new Set(paid.map((r) => r.f));
+  if (!has.has("name") || !c.name) throw new Error("Reveal the contact's name first, so the touches can address someone.");
+  if (!has.has("email") || !c.email) throw new Error("Reveal a verified email first.");
   const existing = await db.select().from(schema.sequences).where(and(eq(schema.sequences.accountId, accountId), eq(schema.sequences.contactId, contactId))).limit(1);
   if (existing.length) return existing[0];
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, c.facilityId));

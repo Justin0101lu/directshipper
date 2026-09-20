@@ -59,6 +59,7 @@ export const facilities = pgTable("facilities", {
   type: text("type").notNull().default("unknown"),   // 3pl | shipper | dc | unknown
   shipper: text("shipper"),
   domain: text("domain"),
+  discoveredAt: timestamp("discovered_at", { withTimezone: true }),   // last free people lookup
   createdAt: now(),
 }, (t) => [uniqueIndex("facilities_key_idx").on(t.key)]);
 
@@ -121,9 +122,11 @@ export const prospects = pgTable("prospects", {
   createdAt: now(),
 }, (t) => [uniqueIndex("prospects_unique_idx").on(t.accountId, t.facilityId)]);
 
+/* People at a dock. Shared across carriers: one discovery serves everyone.
+   What each carrier has paid to see is in `reveals`. */
 export const contacts = pgTable("contacts", {
   id: id(),
-  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),   // legacy, unused
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   name: text("name"),
   title: text("title"),
@@ -133,7 +136,15 @@ export const contacts = pgTable("contacts", {
   phone: text("phone"),
   source: jsonb("source"),                      // which provider found which field
   createdAt: now(),
-});
+}, (t) => [index("contacts_facility_idx").on(t.facilityId)]);
+
+export const reveals = pgTable("reveals", {
+  id: id(),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  contactId: text("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  field: text("field").notNull(),               // name | linkedin | email | phone
+  createdAt: now(),
+}, (t) => [uniqueIndex("reveals_unique_idx").on(t.accountId, t.contactId, t.field)]);
 
 /* ---------- outreach ---------- */
 export const sequences = pgTable("sequences", {

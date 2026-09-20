@@ -2,8 +2,8 @@ export type Person = { name?: string | null; title?: string | null; linkedin?: s
 export type Provider = {
   id: string;
   ready: () => boolean;
-  /* Find the transportation / logistics contact at a company. */
-  findPerson?: (company: string, domain: string | null, titles: string[]) => Promise<Person | null>;
+  /* People in freight roles at a company, several at once. */
+  findPeople?: (company: string, domain: string | null, titles: string[], size: number) => Promise<Person[] | null>;
   /* Verified work email for a named person at a domain. */
   findEmail?: (name: string, domain: string) => Promise<string | null>;
   /* Direct or mobile phone for a named person. */

@@ -9,7 +9,7 @@ import { computeProfile } from "./profile";
 
 export type Receiver = {
   facilityId: string; name: string; city: string; deliveries: number; lastAt: string | null;
-  outbound: Outbound; standing: "clear" | "thin" | "none" | "hold"; why: string; contactId: string | null;
+  outbound: Outbound; standing: "clear" | "thin" | "none" | "hold"; why: string; pickups: number;
 };
 
 async function activeBrokers(accountId: string) {
@@ -44,13 +44,13 @@ export async function receivers(accountId: string): Promise<Receiver[]> {
     else if (!ob.ok) { standing = "thin"; why = `You deliver here ${deliveries} times. Not enough unrelated carriers have seen this dock to say what it ships out; ask at the window.`; }
     else if (ob.loadsPerMonth < 5) { standing = "thin"; why = `Ships about ${ob.loadsPerMonth} loads a month outbound. Worth a call, not a plan.`; }
     else { why = `You deliver here ${deliveries} times. Ships about ${ob.loadsPerMonth}/mo outbound${ob.lanes[0] ? ", " + ob.lanes[0].pct + "% toward " + ob.lanes[0].dest : ""}. No broker put you in this relationship.`; }
-    const [c] = await db.select({ id: schema.contacts.id }).from(schema.contacts).where(and(eq(schema.contacts.accountId, accountId), eq(schema.contacts.facilityId, f.id))).limit(1);
-    out.push({ facilityId: f.id, name: f.name, city: `${f.city}, ${f.state}`, deliveries, lastAt: r.last ? new Date(r.last).toISOString().slice(0, 10) : null, outbound: ob, standing, why, contactId: c?.id ?? null });
+    const [pk] = await db.select({ n: sql<number>`count(distinct ${ST.loadId})` }).from(ST).where(and(eq(ST.accountId, accountId), eq(ST.kind, "pickup"), eq(ST.facilityId, f.id)));
+    out.push({ facilityId: f.id, name: f.name, city: `${f.city}, ${f.state}`, deliveries, lastAt: r.last ? new Date(r.last).toISOString().slice(0, 10) : null, outbound: ob, standing, why, pickups: Number(pk?.n || 0) });
   }
   return out.filter((r) => r.standing !== "hold").sort((a, b) => (a.standing === "clear" ? 0 : 1) - (b.standing === "clear" ? 0 : 1) || b.deliveries - a.deliveries);
 }
 
-export type Lookalike = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: "VERIFIED" | "OBSERVED"; revealed: boolean; contactId: string | null };
+export type Lookalike = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: "VERIFIED" | "OBSERVED"; revealed: boolean };
 
 /* Candidates: network origins with the carrier's top family + equipment, in
    a comparable length-of-haul band, that this carrier has never touched and
@@ -87,9 +87,8 @@ export async function lookalikes(accountId: string, opts: { originState?: string
     const [f] = await db.select().from(F).where(eq(F.id, c.id!));
     if (!f) continue;
     const [p] = await db.select().from(schema.prospects).where(and(eq(schema.prospects.accountId, accountId), eq(schema.prospects.facilityId, f.id))).limit(1);
-    const [ct] = await db.select({ id: schema.contacts.id }).from(schema.contacts).where(and(eq(schema.contacts.accountId, accountId), eq(schema.contacts.facilityId, f.id))).limit(1);
     out.push({ facilityId: f.id, name: p?.revealedAt ? f.name : "", city: `${f.city}, ${f.state}`, family: ob.family, equipment: ob.equipment, loadsPerMonth: ob.loadsPerMonth,
-      match: Number(c.accounts) >= 5 ? "VERIFIED" : "OBSERVED", revealed: !!p?.revealedAt, contactId: ct?.id ?? null });
+      match: Number(c.accounts) >= 5 ? "VERIFIED" : "OBSERVED", revealed: !!p?.revealedAt });
     if (out.length >= 25) break;
   }
   return { family, equipment, rows: out, excluded, thin: cands.length < 3 };

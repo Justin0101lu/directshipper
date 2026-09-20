@@ -1,34 +1,51 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, tok } from "@/components/api";
 import { useFlash } from "@/components/Flash";
 import { useMe } from "@/components/AppShell";
 
-type Contact = { id: string; name: string | null; title: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null };
+type StopRef = { facilityId: string | null; city: string | null; state: string | null };
+type Load = { id: string; date: string | null; loadNumber: string | null; broker: string | null; lane: string; equipment: string | null; family: string | null; miles: number | null; rate: number | null; perMile: number | null; median: number | null; commodity: string | null; pickups: StopRef[]; drops: StopRef[] };
+type Fac = { id: string; name: string; city: string; state: string; type: string; shipper: string | null; discoveredAt: string | null };
 type Outbound = { ok: true; loadsPerMonth: number; accounts: number; lanes: { dest: string; pct: number }[]; equipment: string | null; family: string | null } | { ok: false; accounts: number };
-type Receiver = { facilityId: string; name: string; city: string; deliveries: number; outbound: Outbound; standing: string; why: string; contactId: string | null };
-type Look = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: string; revealed: boolean; contactId: string | null };
-type Data = { receivers: Receiver[]; lookalikes: { family: string; equipment: string; rows: Look[]; excluded: number; thin: boolean }; contacts: Record<string, Contact> };
+type Dock = { facilityId: string; name: string; city: string; deliveries: number; pickups: number; outbound: Outbound; standing: string; why: string };
+type Look = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: string; revealed: boolean };
+type Person = { id: string; title: string | null; name: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null; has: Record<string, boolean> };
+type Data = { loads: Load[]; facilities: Record<string, Fac>; docks: Record<string, Dock>; receivers: Dock[]; lookalikes: { family: string; equipment: string; rows: Look[]; excluded: number; thin: boolean }; contacts: Record<string, Person[]> };
 
-const FIELDS = [["name", "Name and job title"], ["linkedin", "LinkedIn profile"], ["email", "Verified email"], ["phone", "Direct phone"]] as const;
 const EQ: Record<string, string> = { reefer: "Reefer", dry_van: "Dry van", flatbed: "Flatbed" };
 const FAM: Record<string, string> = { frozen: "Frozen & refrigerated", produce: "Produce", beverage: "Beverage", dry: "Dry" };
+const FIELDS = [["name", "Name"], ["linkedin", "LinkedIn"], ["email", "Email"], ["phone", "Phone"]] as const;
 
 export default function Prospects() {
   const { me, refresh } = useMe(); const { flash } = useFlash(); const r = useRouter();
-  const [d, setD] = useState<Data | null>(null); const [chip, setChip] = useState<"all" | "recv" | "look">("all");
+  const [d, setD] = useState<Data | null>(null); const [chip, setChip] = useState<"loads" | "docks" | "look">("loads");
   const [open, setOpen] = useState<string | null>(null); const [busy, setBusy] = useState<string | null>(null);
-  const [search, setSearch] = useState({ state: "", equipment: "", family: "", min: "4" }); const [est, setEst] = useState<string>("");
+  const [q, setQ] = useState(""); const [show, setShow] = useState(60);
+  const [search, setSearch] = useState({ state: "", equipment: "", family: "", min: "4" }); const [est, setEst] = useState("");
   const load = useCallback(() => api<Data>(`/api/prospects?${new URLSearchParams(Object.fromEntries(Object.entries(search).filter(([, v]) => v)))}`).then(setD).catch((e) => flash(e.message, "err")), [search, flash]);
   useEffect(() => { load(); }, [load]);
 
-  async function reveal(facilityId: string, field: string) {
-    setBusy(`${facilityId}:${field}`);
-    try { const x = await api<{ found: boolean; value: string | null }>("/api/contacts/reveal", { method: "POST", json: { facilityId, field } });
-      flash(x.found ? `Found. 1 token.` : "Nothing found. Nothing charged."); await load(); refresh(); }
+  const fac = (id: string | null) => (id && d?.facilities[id]) || null;
+  const nameOf = (s: StopRef) => fac(s.facilityId)?.name || [s.city, s.state].filter(Boolean).join(", ") || "Unknown dock";
+  const people = (fid: string) => d?.contacts[fid] || [];
+
+  async function discover(fid: string) {
+    setBusy(`disc:${fid}`);
+    try { const x = await api<{ count: number }>("/api/contacts/discover", { method: "POST", json: { facilityId: fid } }); flash(x.count ? `${x.count} people in freight roles found. Titles are free; a name, email or phone is one token each.` : "No one in a freight role found at this company yet."); await load(); }
+    catch (e) { flash((e as Error).message, "err"); } finally { setBusy(null); }
+  }
+  async function reveal(contactId: string, field: string) {
+    setBusy(`${contactId}:${field}`);
+    try { const x = await api<{ found: boolean; charged: number }>("/api/contacts/reveal", { method: "POST", json: { contactId, field } }); flash(x.found ? (x.charged ? "Found. 1 token." : "Already yours.") : "Nothing found. Nothing charged."); await load(); refresh(); }
     catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
     finally { setBusy(null); }
+  }
+  async function startOutreach(contactId: string) {
+    setBusy(`seq:${contactId}`);
+    try { await api("/api/outreach/start", { method: "POST", json: { contactId } }); flash("Sequence drafted. Approve the opener under Outreach."); r.push("/app/outreach"); }
+    catch (e) { flash((e as Error).message, "err"); } finally { setBusy(null); }
   }
   async function estimate() {
     try { const x = await api<{ count: number; excluded: number; thin: boolean; family: string; equipment: string }>("/api/prospects/lookalikes", { method: "POST", json: { ...search, min: Number(search.min), estimate: true } });
@@ -41,43 +58,116 @@ export default function Prospects() {
     catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
     finally { setBusy(null); }
   }
-  async function startOutreach(contactId: string) {
-    setBusy(`seq:${contactId}`);
-    try { await api("/api/outreach/start", { method: "POST", json: { contactId } }); flash("Sequence drafted. Approve the opener under Outreach."); r.push("/app/outreach"); }
-    catch (e) { flash((e as Error).message, "err"); } finally { setBusy(null); }
-  }
 
-  const recvRows = d?.receivers ?? [], lookRows = d?.lookalikes.rows ?? [];
-  const count = recvRows.length + lookRows.length;
-  const rows = chip === "recv" ? recvRows.map((x) => ({ kind: "recv" as const, x })) : chip === "look" ? lookRows.map((x) => ({ kind: "look" as const, x })) : [...recvRows.map((x) => ({ kind: "recv" as const, x })), ...lookRows.map((x) => ({ kind: "look" as const, x }))];
-  const unrevealed = lookRows.filter((x) => !x.revealed).length;
+  const loads = useMemo(() => (d?.loads || []).filter((l) => !q || `${l.broker} ${l.lane} ${l.loadNumber} ${l.commodity} ${[...l.pickups, ...l.drops].map(nameOf).join(" ")}`.toLowerCase().includes(q.toLowerCase())), [d, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unrevealed = d?.lookalikes.rows.filter((x) => !x.revealed).length ?? 0;
 
-  function contactBlock(facilityId: string) {
-    const c = d?.contacts[facilityId];
+  /* The dock panel: what we know, who works there. */
+  function dockPanel(fid: string, colSpan: number) {
+    const f = fac(fid); const dk = d?.docks[fid]; const ps = people(fid);
+    if (!f) return null;
+    const ob = dk?.outbound;
     return (
-      <tr key={facilityId + ":c"} style={{ cursor: "default" }}><td colSpan={7} style={{ background: "var(--sunk)" }}>
-        <div className="grid2" style={{ gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          <div><h4 style={{ fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--faint)", fontWeight: 500, marginBottom: 8 }}>Who to call</h4>
-            {!me?.features.providers.length && <p className="hint" style={{ color: "var(--red)" }}>No contact provider is configured yet (Findymail or People Data Labs key).</p>}
-            <dl>{FIELDS.map(([k, label]) => { const v = c?.[k]; const key = `${facilityId}:${k}`; return (
-              <div className="row" key={k}><dt>{label}</dt><dd>{v ? (k === "linkedin" ? <a href={v} target="_blank" rel="noreferrer" className="lnk">{v.replace(/^https?:\/\//, "")}</a> : k === "email" && c?.emailStatus === "bounced" ? <s>{v}</s> : k === "name" ? `${v}${c?.title ? " — " + c.title : ""}` : v)
-                : <button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 13 }} disabled={busy === key || (k !== "name" && !c?.name)} onClick={() => reveal(facilityId, k)}>{busy === key ? <><span className="spin" />Looking…</> : "Reveal · 1 token"}</button>}</dd></div>); })}</dl>
-            <p className="hint">One token per field, charged only on a verified result. Reveal the name first. {c?.email && c.emailStatus !== "bounced" && <a href="#" className="lnk" onClick={async (e) => { e.preventDefault(); await api("/api/contacts/bounce", { method: "POST", json: { contactId: c.id } }); flash("Marked bounced and refunded."); load(); refresh(); }}>Email bounced? Refund it.</a>}</p></div>
-          <div><h4 style={{ fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--faint)", fontWeight: 500, marginBottom: 8 }}>Next</h4>
-            <p className="hint" style={{ marginTop: 0 }}>{c?.email ? "Email on file. Draft the seven-touch sequence; you approve the opener before anything sends." : "Reveal a verified email, then add them to outreach."}</p>
-            <button className="btn" disabled={!c?.email || busy === `seq:${c?.id}`} onClick={() => c && startOutreach(c.id)}>{busy === `seq:${c?.id}` ? <><span className="spin" />Drafting…</> : "Add to outreach"}</button></div>
-        </div></td></tr>
+      <tr key={fid + ":panel"} style={{ cursor: "default" }}><td colSpan={colSpan} style={{ background: "var(--sunk)", padding: "16px 18px" }}>
+        <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr", gap: 24 }}>
+          <div>
+            <h4 style={{ fontSize: 15, fontWeight: 600 }}>{f.name}</h4>
+            <p className="small" style={{ marginBottom: 10 }}>{f.city}, {f.state}{f.shipper && f.shipper !== f.name ? ` · freight owner on paper: ${f.shipper}` : ""}{f.type === "3pl" ? " · third-party warehouse" : ""}</p>
+            <dl>
+              <div className="row"><dt>Your deliveries here</dt><dd>{dk?.deliveries ?? 0}</dd></div>
+              <div className="row"><dt>Your pickups here</dt><dd>{dk?.pickups ?? 0}</dd></div>
+              <div className="row"><dt>Ships outbound</dt><dd>{ob?.ok ? `${ob.loadsPerMonth}/mo${ob.lanes[0] ? ` · ${ob.lanes.map((l) => `${l.dest} ${l.pct}%`).join(" · ")}` : ""}` : `not enough observations (${ob?.accounts ?? 0} other carrier${ob?.accounts === 1 ? "" : "s"})`}</dd></div>
+              <div className="row"><dt>Standing</dt><dd>{dk?.standing === "hold" ? <span className="tag t-flag">BROKER HOLD</span> : dk?.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : <span className="tag t-obs">NO OBSERVATIONS YET</span>}</dd></div>
+            </dl>
+            {dk?.why && <p className="hint">{dk.why}</p>}
+          </div>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <h4 style={{ fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--faint)", fontWeight: 500 }}>People in freight roles · {ps.length}</h4>
+              <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} disabled={busy === `disc:${fid}` || !me?.features.providers.includes("peopledatalabs")} onClick={() => discover(fid)} title={f.discoveredAt ? `Last looked up ${new Date(f.discoveredAt).toLocaleDateString()}` : ""}>{busy === `disc:${fid}` ? <><span className="spin" />Looking…</> : f.discoveredAt ? "Look again" : "Find contacts · free"}</button>
+            </div>
+            {!me?.features.providers.includes("peopledatalabs") && <p className="hint" style={{ color: "var(--red)" }}>People lookup needs a People Data Labs key on the server.</p>}
+            {!ps.length && <p className="hint">{f.discoveredAt ? "No one in a freight role on file for this company." : "Nobody looked yet. Finding contacts is free; you pay only for a name, email or phone you choose to see."}</p>}
+            {ps.map((p) => (
+              <div key={p.id} className="person">
+                <div className="person-h"><b>{p.name || <span style={{ color: "var(--faint)" }}>Name hidden</span>}</b><span className="small">{p.title || "title unknown"}</span></div>
+                <div className="person-f">
+                  {FIELDS.map(([k, label]) => {
+                    const v = p[k]; const key = `${p.id}:${k}`;
+                    if (v) return <span key={k} className="pf">{k === "linkedin" ? <a className="lnk" href={v} target="_blank" rel="noreferrer">LinkedIn</a> : k === "email" && p.emailStatus === "bounced" ? <s>{v}</s> : v}</span>;
+                    return <button key={k} className="btn-ghost pf-btn" disabled={busy === key || (k !== "name" && !p.name)} onClick={() => reveal(p.id, k)} title={p.has[k] ? "On file, 1 token to see" : "Will be looked up, 1 token if found"}>{busy === key ? "…" : `${label} · 1`}</button>;
+                  })}
+                  {p.email && p.emailStatus !== "bounced" && <button className="btn pf-btn" disabled={busy === `seq:${p.id}`} onClick={() => startOutreach(p.id)}>{busy === `seq:${p.id}` ? "Drafting…" : "Add to outreach"}</button>}
+                  {p.email && p.emailStatus !== "bounced" && <a href="#" className="small lnk" onClick={async (e) => { e.preventDefault(); await api("/api/contacts/bounce", { method: "POST", json: { contactId: p.id } }); flash("Marked bounced and refunded."); load(); refresh(); }}>bounced?</a>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </td></tr>
     );
   }
 
+  const dockCell = (stops: StopRef[], kind: "pickup" | "drop") => (
+    <div>
+      {stops.map((s, i) => { const fid = s.facilityId; const n = fid ? people(fid).length : 0; return (
+        <div key={i} className="dock-line">
+          {fid ? <a href="#" className="dock-name" onClick={(e) => { e.preventDefault(); setOpen(open === fid ? null : fid); }}>{nameOf(s)}</a> : <span>{nameOf(s)}</span>}
+          <span className="small"> {fid && fac(fid) ? `${fac(fid)!.city}, ${fac(fid)!.state}` : ""}{fid ? (n ? ` · ${n} contact${n === 1 ? "" : "s"}` : "") : ""}</span>
+        </div>); })}
+      {stops.length > 1 && <div className="small">{stops.length} {kind === "pickup" ? "pickups" : "drops"}</div>}
+      {!stops.length && <span className="small">—</span>}
+    </div>
+  );
+
   return (
     <>
-      <div className="pane-h"><div><h2>Prospects</h2><p>{d ? `${count} shippers you could win, warmest first · ${me ? tok(me.tokens.total) + " available" : ""}` : "Loading…"}</p></div>
+      <div className="pane-h"><div><h2>Prospects</h2><p>{d ? `${d.loads.length.toLocaleString()} loads · every shipper and receiver on them · ${me ? tok(me.tokens.total) + " available" : ""}` : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={() => setChip("look")}>Search lookalikes</button></div></div>
-      <div className="chips">{([["all", "All", count], ["recv", "Receivers", recvRows.length], ["look", "Lookalikes", lookRows.length]] as const).map(([id, label, n]) => <button key={id} className={`chip${chip === id ? " on" : ""}`} onClick={() => setChip(id)}>{label}<i>{n}</i></button>)}</div>
-      <p className="excl">Shippers you reach through a current broker are hidden.{d && d.lookalikes.excluded ? ` ${d.lookalikes.excluded} lookalikes excluded as existing broker relationships.` : ""}</p>
+      <div className="chips">{([["loads", "Loads", d?.loads.length ?? 0], ["docks", "Docks", d?.receivers.length ?? 0], ["look", "Lookalikes", d?.lookalikes.rows.length ?? 0]] as const).map(([id, label, n]) => <button key={id} className={`chip${chip === id ? " on" : ""}`} onClick={() => setChip(id)}>{label}<i>{n}</i></button>)}</div>
+      <p className="excl">Click a shipper or receiver to see what we know about the dock and who works there. Finding people is free; each name, email or phone is one token.</p>
 
-      {chip === "look" && (
+      {chip === "loads" && (
+        <div className="lv" style={{ overflow: "visible" }}>
+          <div className="lv-tools"><input className="lv-search" type="text" placeholder="Search shipper, receiver, broker, lane or load number" value={q} onChange={(e) => { setQ(e.target.value); setShow(60); }} /><span className="lv-count">{d ? `${loads.length.toLocaleString()} of ${d.loads.length.toLocaleString()} · ${Math.min(show, loads.length)} shown` : ""}</span></div>
+          <table style={{ border: "none" }}><thead><tr><th>Date</th><th>Shipper</th><th>Receiver</th><th>Broker</th><th>Lane</th><th>Equip</th><th className="right">Rate</th></tr></thead><tbody>
+            {!d && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">Reading your loads…</td></tr>}
+            {d && !loads.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.loads.length ? "No loads match that." : "No loads yet. Connect an inbox or upload rate cons under Account → Sources."}</td></tr>}
+            {loads.slice(0, show).flatMap((l) => {
+              const row = (
+                <tr key={l.id} style={{ cursor: "default" }}>
+                  <td className="num" data-label="Date">{l.date || ""}{l.loadNumber ? <div className="small">#{l.loadNumber}</div> : null}</td>
+                  <td data-label="Shipper">{dockCell(l.pickups, "pickup")}</td>
+                  <td data-label="Receiver">{dockCell(l.drops, "drop")}</td>
+                  <td data-label="Broker" className="lv-dim">{l.broker || "—"}</td>
+                  <td data-label="Lane">{l.lane}<div className="small">{l.commodity || FAM[l.family || ""] || ""}{l.miles ? ` · ${l.miles} mi` : ""}</div></td>
+                  <td data-label="Equip" className="lv-dim">{EQ[l.equipment || ""] || "—"}</td>
+                  <td data-label="Rate" className="num right">{l.rate ? `$${Math.round(l.rate).toLocaleString()}` : "—"}<div className="small">{l.perMile ? `$${l.perMile.toFixed(2)}/mi` : ""}{l.median && l.perMile && l.perMile < l.median * 0.9 ? <span className="tag t-flag" style={{ marginLeft: 6 }} title={`Your median on this lane is $${l.median.toFixed(2)}/mi`}>LOW</span> : null}</div></td>
+                </tr>);
+              const openHere = open && [...l.pickups, ...l.drops].some((s) => s.facilityId === open);
+              return openHere ? [row, dockPanel(open!, 7)] : [row];
+            })}
+          </tbody></table>
+          {loads.length > show && <div className="lv-more"><button className="btn-ghost" onClick={() => setShow(show + 100)}>Load {Math.min(100, loads.length - show)} more · {(loads.length - show).toLocaleString()} left</button></div>}
+        </div>
+      )}
+
+      {chip === "docks" && (
+        <table><thead><tr><th>Dock</th><th>Your loads</th><th>Ships outbound</th><th>Standing</th><th>People</th><th></th></tr></thead><tbody>
+          {d && !d.receivers.length && <tr style={{ cursor: "default" }}><td colSpan={6} className="small">No docks yet.</td></tr>}
+          {d?.receivers.flatMap((dk) => { const ob = dk.outbound; const n = people(dk.facilityId).length; const row = (
+            <tr key={dk.facilityId} onClick={() => setOpen(open === dk.facilityId ? null : dk.facilityId)}>
+              <td className="lead">{dk.name}<div className="cell-sub">{dk.city}</div></td>
+              <td data-label="Your loads" className="num">{dk.deliveries} in{dk.pickups ? ` · ${dk.pickups} out` : ""}</td>
+              <td data-label="Ships outbound">{ob.ok ? `${ob.loadsPerMonth}/mo · ${ob.lanes.map((l) => `${l.dest} ${l.pct}%`).join(" · ")}` : <span className="small">not enough observations</span>}</td>
+              <td data-label="Standing">{dk.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : <span className="tag t-obs">NO OBSERVATIONS YET</span>}</td>
+              <td data-label="People" className="num">{n ? `${n} · ${people(dk.facilityId).filter((p) => p.name).length} named` : "—"}</td>
+              <td data-label="" className="right"><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === dk.facilityId ? null : dk.facilityId); }}>{n ? "People" : "Find contacts"}</button></td></tr>);
+            return open === dk.facilityId ? [row, dockPanel(dk.facilityId, 6)] : [row]; })}
+        </tbody></table>
+      )}
+
+      {chip === "look" && (<>
         <div className="panel"><h3>Search lookalikes <span className="tag t-obs" style={{ marginLeft: 6 }}>1 TOKEN PER SHIPPER</span></h3>
           <p className="ph">Starts from what you already haul and looks for docks in the network shipping the same kind of freight. Anything you have hauled for a broker is excluded, and so is anything that broker moves.</p>
           <div className="grid2" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
@@ -88,40 +178,20 @@ export default function Prospects() {
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}><button className="btn" onClick={estimate}>Estimate cost</button><button className="btn-ghost" onClick={runSearch} disabled={busy === "search" || !unrevealed}>{busy === "search" ? <><span className="spin" />Revealing…</> : `Reveal ${unrevealed ? "all · " + tok(unrevealed) : ""}`}</button><span className="hint" style={{ margin: 0 }}>{est}</span></div>
         </div>
-      )}
-
-      <table><thead><tr><th>Shipper</th><th>Why it fits</th><th>Their outbound</th><th>Equip</th><th>Standing</th><th>Cost</th><th></th></tr></thead><tbody>
-        {!d && <tr style={{ cursor: "default" }}><td colSpan={7} style={{ color: "var(--faint)" }}>Reading your loads…</td></tr>}
-        {d && !rows.length && <tr style={{ cursor: "default" }}><td colSpan={7} style={{ color: "var(--faint)" }}>{recvRows.length === 0 ? "No loads yet. Connect an inbox or upload rate cons under Account → Sources, and the docks you deliver to appear here." : "Nothing under this chip."}</td></tr>}
-        {d && rows.flatMap(({ kind, x }) => {
-          const c = d.contacts[x.facilityId];
-          const main = kind === "recv" ? (() => { const rr = x as Receiver; const ob = rr.outbound; return (
-            <tr key={rr.facilityId} onClick={() => setOpen(open === rr.facilityId ? null : rr.facilityId)}>
-              <td className="lead">{rr.name}<div className="cell-sub">{rr.city} · {rr.deliveries} deliveries</div></td>
-              <td data-label="Why it fits">{rr.why}</td>
-              <td data-label="Their outbound">{ob.ok ? `${ob.loadsPerMonth}/mo${ob.lanes[0] ? " · " + ob.lanes.map((l) => `${l.dest} ${l.pct}%`).join(" · ") : ""}` : <span className="hint" style={{ margin: 0 }}>Not enough observations ({ob.accounts} carrier{ob.accounts === 1 ? "" : "s"})</span>}</td>
-              <td data-label="Equip">{ob.ok && ob.equipment ? EQ[ob.equipment] || ob.equipment : "—"}</td>
-              <td data-label="Standing">{rr.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : rr.standing === "thin" ? <span className="tag t-obs">THIN VOLUME</span> : <span className="tag t-inf">INBOUND ONLY</span>}</td>
-              <td data-label="Cost" className="num">{c?.email ? <span className="tag t-ver">CONTACT ON FILE</span> : <span className="pill">FREE</span>}</td>
-              <td data-label="" className="right"><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === rr.facilityId ? null : rr.facilityId); }}>{c?.name ? "Contact" : "Get contact"}</button></td></tr>); })()
-          : (() => { const lk = x as Look; return (
+        <table><thead><tr><th>Shipper</th><th>Why it fits</th><th>Outbound</th><th>Equip</th><th>Match</th><th>People</th><th></th></tr></thead><tbody>
+          {d && !d.lookalikes.rows.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.lookalikes.thin ? "The network has not seen enough freight like yours yet." : "Nothing matches that search."}</td></tr>}
+          {d?.lookalikes.rows.flatMap((lk) => { const n = people(lk.facilityId).length; const row = (
             <tr key={lk.facilityId} onClick={() => lk.revealed && setOpen(open === lk.facilityId ? null : lk.facilityId)} style={lk.revealed ? undefined : { cursor: "default" }}>
               <td className="lead">{lk.revealed ? lk.name : <span style={{ color: "var(--faint)" }}>Lookalike shipper</span>}<div className="cell-sub">{lk.city}</div></td>
               <td data-label="Why it fits">Ships {FAM[lk.family || ""] || lk.family || "freight"} on {EQ[lk.equipment || ""] || "trailers"}, like your own history. No broker between you.</td>
-              <td data-label="Their outbound">{lk.loadsPerMonth}/mo observed</td>
+              <td data-label="Outbound">{lk.loadsPerMonth}/mo observed</td>
               <td data-label="Equip">{EQ[lk.equipment || ""] || "—"}</td>
-              <td data-label="Standing"><span className={`tag ${lk.match === "VERIFIED" ? "t-ver" : "t-obs"}`}>{lk.match}</span></td>
-              <td data-label="Cost" className="num">{lk.revealed ? <>1 token<div className="cell-sub">spent</div></> : <>1 token<div className="cell-sub">to reveal</div></>}</td>
-              <td data-label="" className="right">{lk.revealed ? <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === lk.facilityId ? null : lk.facilityId); }}>{c?.name ? "Contact" : "Get contact"}</button> : <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => setChip("look")}>Reveal</button>}</td></tr>); })();
-          return open === x.facilityId ? [main, contactBlock(x.facilityId)] : [main];
-        })}
-      </tbody></table>
-      {chip === "recv" && (
-        <div className="grid2" style={{ marginTop: 20 }}>
-          <div className="panel"><h3>Why receivers come first</h3><p className="ph" style={{ margin: 0 }}>A broker&rsquo;s non-solicit covers the broker&rsquo;s customer, the shipper who tendered the load. The consignee on the delivery end is usually not that customer, and their outbound freight is their own to award. You are also the only carrier who can say &ldquo;I&rsquo;m at your dock Thursday anyway.&rdquo; A few agreements reach consignees too; read yours.</p></div>
-          <div className="panel"><h3>Where the outbound number comes from</h3><p className="ph" style={{ margin: 0 }}>Other carriers&rsquo; rate cons that show this dock as the pickup. A figure is published only once at least three unrelated carriers have seen it, so nobody&rsquo;s loads can be traced back. Below that, you see &ldquo;not enough observations&rdquo; instead of a guess.</p></div>
-        </div>
-      )}
+              <td data-label="Match"><span className={`tag ${lk.match === "VERIFIED" ? "t-ver" : "t-obs"}`}>{lk.match}</span></td>
+              <td data-label="People" className="num">{lk.revealed && n ? `${n}` : "—"}</td>
+              <td data-label="" className="right">{lk.revealed ? <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === lk.facilityId ? null : lk.facilityId); }}>{n ? "People" : "Find contacts"}</button> : <span className="small">1 token to reveal</span>}</td></tr>);
+            return open === lk.facilityId ? [row, dockPanel(lk.facilityId, 7)] : [row]; })}
+        </tbody></table>
+      </>)}
     </>
   );
 }

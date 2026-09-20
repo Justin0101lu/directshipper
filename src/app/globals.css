@@ -683,3 +683,15 @@ textarea{font-family:var(--sans);font-size:14.5px;line-height:1.5;padding:11px 1
 .mt{margin-top:14px}
 .chan-tab{background:var(--card)}
 .landing-hero{padding:80px 0 60px}
+
+/* ---------- prospects: docks inside load rows, people panel ---------- */
+.dock-line{line-height:1.35;margin-bottom:3px}
+.dock-name{color:var(--ink);font-weight:500;border-bottom:1px solid var(--rule-hard)}
+.dock-name:hover{color:var(--blue);border-bottom-color:var(--blue)}
+.person{border:1px solid var(--rule);background:var(--card);border-radius:2px;padding:10px 12px;margin-top:8px}
+.person-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.person-h b{font-weight:500;font-size:14.5px}
+.person-f{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.pf{font-family:var(--mono);font-size:12.5px;background:var(--sunk);padding:4px 8px;border-radius:2px}
+.pf-btn{padding:4px 9px!important;font-size:12.5px!important;min-height:0!important}
+@media (max-width:860px){ .dock-line{text-align:left} }
