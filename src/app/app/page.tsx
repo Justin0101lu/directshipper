@@ -26,6 +26,7 @@ export default function Prospects() {
   const [search, setSearch] = useState({ state: "", equipment: "", family: "", min: "4" }); const [est, setEst] = useState("");
   const load = useCallback(() => api<Data>(`/api/prospects?${new URLSearchParams(Object.fromEntries(Object.entries(search).filter(([, v]) => v)))}`).then(setD).catch((e) => flash(e.message, "err")), [search, flash]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); }; document.addEventListener("keydown", k); return () => document.removeEventListener("keydown", k); }, []);
 
   const fac = (id: string | null) => (id && d?.facilities[id]) || null;
   const nameOf = (s: StopRef) => fac(s.facilityId)?.name || [s.city, s.state].filter(Boolean).join(", ") || "Unknown dock";
@@ -63,25 +64,25 @@ export default function Prospects() {
   const unrevealed = d?.lookalikes.rows.filter((x) => !x.revealed).length ?? 0;
 
   /* The dock panel: what we know, who works there. */
-  function dockPanel(fid: string, colSpan: number) {
+  const toggle = (key: string) => setOpen(open === key ? null : key);
+
+  function dockPanel(fid: string, colSpan: number, key: string) {
     const f = fac(fid); const dk = d?.docks[fid]; const ps = people(fid);
     if (!f) return null;
     const ob = dk?.outbound;
+    const facts = [
+      dk?.deliveries ? `${dk.deliveries} deliveries` : null,
+      dk?.pickups ? `${dk.pickups} pickups` : null,
+      ob?.ok ? `ships ${ob.loadsPerMonth}/mo${ob.lanes[0] ? ` · ${ob.lanes.map((l) => `${l.dest} ${l.pct}%`).join(" · ")}` : ""}` : `outbound unknown (${ob?.accounts ?? 0} other carrier${ob?.accounts === 1 ? "" : "s"} seen)`,
+    ].filter(Boolean).join(" · ");
     return (
-      <tr key={fid + ":panel"} style={{ cursor: "default" }}><td colSpan={colSpan} style={{ background: "var(--sunk)", padding: "16px 18px" }}>
-        <div className="grid2" style={{ gridTemplateColumns: "1fr 1.4fr", gap: 24 }}>
-          <div>
-            <h4 style={{ fontSize: 15, fontWeight: 600 }}>{f.name}</h4>
-            <p className="small" style={{ marginBottom: 10 }}>{f.city}, {f.state}{f.shipper && f.shipper !== f.name ? ` · freight owner on paper: ${f.shipper}` : ""}{f.type === "3pl" ? " · third-party warehouse" : ""}</p>
-            <dl>
-              <div className="row"><dt>Your deliveries here</dt><dd>{dk?.deliveries ?? 0}</dd></div>
-              <div className="row"><dt>Your pickups here</dt><dd>{dk?.pickups ?? 0}</dd></div>
-              <div className="row"><dt>Ships outbound</dt><dd>{ob?.ok ? `${ob.loadsPerMonth}/mo${ob.lanes[0] ? ` · ${ob.lanes.map((l) => `${l.dest} ${l.pct}%`).join(" · ")}` : ""}` : `not enough observations (${ob?.accounts ?? 0} other carrier${ob?.accounts === 1 ? "" : "s"})`}</dd></div>
-              <div className="row"><dt>Standing</dt><dd>{dk?.standing === "hold" ? <span className="tag t-flag">BROKER HOLD</span> : dk?.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : <span className="tag t-obs">NO OBSERVATIONS YET</span>}</dd></div>
-            </dl>
-            {dk?.why && <p className="hint">{dk.why}</p>}
-          </div>
-          <div>
+      <tr key={key + ":panel"} style={{ cursor: "default" }}><td colSpan={colSpan} className="dock-panel">
+        <div className="dock-panel-h">
+          <div><b>{f.name}</b><span className="small"> · {f.city}, {f.state}{f.shipper && f.shipper !== f.name ? ` · freight owner on paper: ${f.shipper}` : ""}{f.type === "3pl" ? " · third-party warehouse" : ""}</span>
+            <div className="small">{facts} · {dk?.standing === "hold" ? <span className="tag t-flag">BROKER HOLD</span> : dk?.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : <span className="tag t-obs">NO OBSERVATIONS YET</span>}</div></div>
+          <button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => setOpen(null)}>Close</button>
+        </div>
+        <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h4 style={{ fontSize: 12, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--faint)", fontWeight: 500 }}>People in freight roles · {ps.length}</h4>
               <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} disabled={busy === `disc:${fid}` || !me?.features.providers.includes("peopledatalabs")} onClick={() => discover(fid)} title={f.discoveredAt ? `Last looked up ${new Date(f.discoveredAt).toLocaleDateString()}` : ""}>{busy === `disc:${fid}` ? <><span className="spin" />Looking…</> : f.discoveredAt ? "Look again" : "Find contacts · free"}</button>
@@ -102,17 +103,16 @@ export default function Prospects() {
                 </div>
               </div>
             ))}
-          </div>
         </div>
       </td></tr>
     );
   }
 
-  const dockCell = (stops: StopRef[], kind: "pickup" | "drop") => (
+  const dockCell = (stops: StopRef[], kind: "pickup" | "drop", rowId: string) => (
     <div>
-      {stops.map((s, i) => { const fid = s.facilityId; const n = fid ? people(fid).length : 0; return (
+      {stops.map((s, i) => { const fid = s.facilityId; const n = fid ? people(fid).length : 0; const key = `${rowId}:${fid}`; const isOpen = open === key; return (
         <div key={i} className="dock-line">
-          {fid ? <a href="#" className="dock-name" onClick={(e) => { e.preventDefault(); setOpen(open === fid ? null : fid); }}>{nameOf(s)}</a> : <span>{nameOf(s)}</span>}
+          {fid ? <a href="#" className={`dock-name${isOpen ? " open" : ""}`} onClick={(e) => { e.preventDefault(); toggle(key); }}><i>{isOpen ? "\u25BE" : "\u25B8"}</i>{nameOf(s)}</a> : <span>{nameOf(s)}</span>}
           <span className="small"> {fid && fac(fid) ? `${fac(fid)!.city}, ${fac(fid)!.state}` : ""}{fid ? (n ? ` · ${n} contact${n === 1 ? "" : "s"}` : "") : ""}</span>
         </div>); })}
       {stops.length > 1 && <div className="small">{stops.length} {kind === "pickup" ? "pickups" : "drops"}</div>}
@@ -137,15 +137,15 @@ export default function Prospects() {
               const row = (
                 <tr key={l.id} style={{ cursor: "default" }}>
                   <td className="num" data-label="Date">{l.date || ""}{l.loadNumber ? <div className="small">#{l.loadNumber}</div> : null}</td>
-                  <td data-label="Shipper">{dockCell(l.pickups, "pickup")}</td>
-                  <td data-label="Receiver">{dockCell(l.drops, "drop")}</td>
+                  <td data-label="Shipper">{dockCell(l.pickups, "pickup", l.id)}</td>
+                  <td data-label="Receiver">{dockCell(l.drops, "drop", l.id)}</td>
                   <td data-label="Broker" className="lv-dim">{l.broker || "—"}</td>
                   <td data-label="Lane">{l.lane}<div className="small">{l.commodity || FAM[l.family || ""] || ""}{l.miles ? ` · ${l.miles} mi` : ""}</div></td>
                   <td data-label="Equip" className="lv-dim">{EQ[l.equipment || ""] || "—"}</td>
                   <td data-label="Rate" className="num right">{l.rate ? `$${Math.round(l.rate).toLocaleString()}` : "—"}<div className="small">{l.perMile ? `$${l.perMile.toFixed(2)}/mi` : ""}{l.median && l.perMile && l.perMile < l.median * 0.9 ? <span className="tag t-flag" style={{ marginLeft: 6 }} title={`Your median on this lane is $${l.median.toFixed(2)}/mi`}>LOW</span> : null}</div></td>
                 </tr>);
-              const openHere = open && [...l.pickups, ...l.drops].some((s) => s.facilityId === open);
-              return openHere ? [row, dockPanel(open!, 7)] : [row];
+              const openFid = open && open.startsWith(l.id + ":") ? open.slice(l.id.length + 1) : null;
+              return openFid ? [row, dockPanel(openFid, 7, open!)] : [row];
             })}
           </tbody></table>
           {loads.length > show && <div className="lv-more"><button className="btn-ghost" onClick={() => setShow(show + 100)}>Load {Math.min(100, loads.length - show)} more · {(loads.length - show).toLocaleString()} left</button></div>}
@@ -163,7 +163,7 @@ export default function Prospects() {
               <td data-label="Standing">{dk.standing === "clear" ? <span className="tag t-ver">NO BROKER HOLD</span> : <span className="tag t-obs">NO OBSERVATIONS YET</span>}</td>
               <td data-label="People" className="num">{n ? `${n} · ${people(dk.facilityId).filter((p) => p.name).length} named` : "—"}</td>
               <td data-label="" className="right"><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === dk.facilityId ? null : dk.facilityId); }}>{n ? "People" : "Find contacts"}</button></td></tr>);
-            return open === dk.facilityId ? [row, dockPanel(dk.facilityId, 6)] : [row]; })}
+            return open === dk.facilityId ? [row, dockPanel(dk.facilityId, 6, dk.facilityId)] : [row]; })}
         </tbody></table>
       )}
 
@@ -189,7 +189,7 @@ export default function Prospects() {
               <td data-label="Match"><span className={`tag ${lk.match === "VERIFIED" ? "t-ver" : "t-obs"}`}>{lk.match}</span></td>
               <td data-label="People" className="num">{lk.revealed && n ? `${n}` : "—"}</td>
               <td data-label="" className="right">{lk.revealed ? <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === lk.facilityId ? null : lk.facilityId); }}>{n ? "People" : "Find contacts"}</button> : <span className="small">1 token to reveal</span>}</td></tr>);
-            return open === lk.facilityId ? [row, dockPanel(lk.facilityId, 7)] : [row]; })}
+            return open === lk.facilityId ? [row, dockPanel(lk.facilityId, 7, lk.facilityId)] : [row]; })}
         </tbody></table>
       </>)}
     </>
