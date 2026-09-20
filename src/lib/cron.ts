@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { syncImapMailbox } from "./mail/imap";
 import { syncGraphMailbox } from "./mail/graph";
-import { runDueSteps, prepareTop, autopilotTick } from "./outreach";
+import { runDueSteps, prepareTop, autopilotTick, discoverTop } from "./outreach";
 import { collectBatches, submitBatches } from "./ai/batch";
 
 export async function runCron() {
@@ -25,6 +25,7 @@ export async function runCron() {
   const agent: Record<string, number> = {};
   for (const a of accts) {
     if (Date.now() - started > 270_000) break;
+    try { await discoverTop(a.id, 5); } catch { /* next tick */ }
     try { const n = await prepareTop(a.id, 2); if (n) drafted[a.id] = n; } catch { /* next tick */ }
     try { const r = await autopilotTick(a.id); if (r.started) agent[a.id] = r.started; } catch { /* next tick */ }
   }

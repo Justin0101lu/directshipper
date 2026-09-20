@@ -14,29 +14,29 @@ export default function Landing() {
       </div></div>
 
       <div className="hero landing-hero"><div className="wrap">
-        <h1>You know your trucks. Do you know your freight?</h1>
-        <p className="lede">Connect your email and Direct Shipper reads every rate con in it, going back years. You find out what you actually haul, which lanes are quietly underpaying you, and which shippers you can win direct, starting with the docks you already back into every week.</p>
+        <h1>Your rate cons already know who ships. Now you do.</h1>
+        <p className="lede">Connect your inbox or upload your rate cons. Direct Shipper reads every one, lists each shipper and receiver you have hauled for, and shows you the people who run freight at those docks, by title, on its own and for free. You pay only when you reveal who they are: a name, an email, a phone number.</p>
         <div className="hero-cta">
-          <Link className="btn btn-lg" href="/signup">Read my freight</Link>
+          <Link className="btn btn-lg" href="/signup">Show me my shippers</Link>
           <a className="btn-ghost btn-lg" href="#pricing">See pricing</a>
         </div>
-        <p className="hero-note">Reading your own freight is free, and stays free. No card.</p>
+        <p className="hero-note">Reading your rate cons and seeing who works at each dock is free, and stays free. No card.</p>
       </div></div>
 
       <div className="strip"><div className="strip-in">
-        <span><i className="dot"></i>The person who books freight, not a switchboard</span>
-        <span><i className="dot"></i>Verified emails, refunded if they bounce</span>
-        <span><i className="dot"></i>Every figure shows how many loads it rests on</span>
+        <span><i className="dot"></i>Every shipper and receiver on your loads, free</span>
+        <span><i className="dot"></i>Who books freight at each dock, by title, free</span>
+        <span><i className="dot"></i>Pay only to reveal a name, email or phone</span>
         <span><i className="dot"></i>Your own data is never shown to anyone else</span>
       </div></div>
 
       <div className="sect" id="how"><div className="wrap">
         <h2 style={{ maxWidth: "26ch" }}>Stop renting your freight from brokers</h2>
-        <p className="sub">Understanding your own freight is free. You pay only when Direct Shipper goes out and finds you someone new.</p>
+        <p className="sub">Upload rate cons, get shippers. Seeing who they are and who works there is free. You pay only when you reveal a name, an email or a phone number, and never when we come back empty.</p>
         <div className="plays">
           {[
             ["01", "Find out what your freight is really worth", "Your whole history read back to you: commodity mix, length of haul, rate per mile by lane. Most carriers discover their busiest lane is their worst paying one.", "FREE", "Unlimited"],
-            ["02", "Reach the person who actually books the freight", "At every dock you already back into, Direct Shipper finds the transportation, logistics or shipping manager, not a front desk. You see their title before you spend a token, the email is verified before it is sent, and a bounce is refunded.", "1 token", "per verified email"],
+            ["02", "See who books the freight, before you spend anything", "As the scan fills in, Direct Shipper looks up the transportation, logistics and shipping people at your busiest docks on its own. You see how many there are and their titles for free. Revealing one is a token; the email is verified before it is sent and a bounce is refunded.", "FREE", "Titles free, 1 token to reveal"],
             ["03", "Win the freight you already know how to haul", "Facilities moving the same commodity on the same lanes you run well, with no broker in between. Your own history does the targeting.", "1 token", "per new shipper"],
             ["04", "Let the agent work them until they answer", "Seven touches over 30 days, each one written from your own freight history and signed by you, from the company you choose. On Send, the agent starts new shippers every day on its own, never one you are under a hold on, and stops the second they reply.", "FREE", "Sends included on paid plans"],
             ["05", "Ask your freight a question", "“Who did I haul frozen for out of Ontario last winter?” Answered from your own rate cons, with the source on every answer.", "FREE", "Unlimited"],

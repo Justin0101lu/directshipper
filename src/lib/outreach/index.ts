@@ -102,6 +102,24 @@ export async function prepareTop(accountId: string, n = 3) {
   return made;
 }
 
+/* Look up who works at the busiest docks on its own, a few per tick, so titles are on
+   screen before anyone clicks. Free to the carrier; the lookup is cached 90 days. */
+export async function discoverTop(accountId: string, n = 5) {
+  const db = await getDb();
+  const { discover, providersReady } = await import("@/lib/enrich");
+  if (!providersReady().length) return 0;
+  const docks = await rankedDocks(accountId, 30);
+  let done = 0;
+  for (const d of docks) {
+    if (d.loads < 2) continue;
+    const [f] = await db.select({ at: schema.facilities.discoveredAt }).from(schema.facilities).where(eq(schema.facilities.id, d.facilityId));
+    if (f?.at) continue;
+    try { await discover(d.facilityId); done++; } catch (e) { console.error("[enrich] discover failed", d.name, (e as Error).message); break; }
+    if (done >= n) break;
+  }
+  return done;
+}
+
 /* Pick the person most likely to award freight. */
 const TITLE_RANK = [/transportation/i, /logistics/i, /shipping/i, /traffic/i, /supply chain/i, /distribution/i, /warehouse/i, /operations/i, /procurement|purchasing/i];
 export function bestPerson(people: Visible[]) {

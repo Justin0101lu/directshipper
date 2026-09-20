@@ -15,7 +15,7 @@ export const PLANS: Record<PlanId, {
 }> = {
   free: { id: "free", name: "Free", price: 0, monthly: 0, extra: 0.5, outreach: false, export: false, agreements: false, inboxes: 1, perDay: 0,
     who: "Free forever, not a trial",
-    perks: ["Connect one inbox — full history scan", "Unlimited rate con reading", "Every shipper and receiver on your loads", "Your companies, by MC", "Ask your freight", "Outreach drafts you can copy", "10 welcome tokens"],
+    perks: ["Connect one inbox or upload rate cons — full history scan", "Every shipper and receiver on your loads", "Who books freight at your busiest docks, by title", "Your companies, by MC", "Ask your freight", "Outreach drafts you can copy", "10 welcome tokens to reveal people"],
     off: ["Autopilot does not send", "No broker agreement upload"] },
   carrier: { id: "carrier", name: "Carrier", price: 99, monthly: 200, extra: 0.4, outreach: true, export: true, agreements: true, inboxes: 1, perDay: 3,
     who: "1 to 20 trucks, nobody selling",
