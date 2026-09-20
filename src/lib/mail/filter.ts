@@ -9,6 +9,8 @@ const BODY = /rate\s*confirmation|carrier\s*rate|linehaul|total\s*rate|pick\s*up
 const NOISE = /unsubscribe|newsletter|webinar|invoice\s*(#|no|number)|remittance|payment\s+advice|statement|quickpay|factoring|detention\s+request|lumper/i;
 
 export const scanMode = () => (process.env.SCAN_MODE === "thorough" ? "thorough" : "strict");
+/* PDF-only: a rate con subject is not enough, the message must carry a PDF. Skips body-only confirmations. */
+export const requirePdf = () => process.env.SCAN_REQUIRE_PDF === "1";
 
 /* Decide from the subject alone, before the body is even fetched. */
 export function subjectPasses(subject: string) {
@@ -21,6 +23,7 @@ export function looksLikeRateCon(subject: string, text: string, attachmentNames:
   const s = subject || "", t = (text || "").slice(0, 6000);
   if (NOISE.test(s + " " + t.slice(0, 1500)) && !/rate\s*con/i.test(s)) return false;
   const pdf = attachmentNames.some((n) => /\.pdf$/i.test(n));
+  if (requirePdf() && !pdf) return false;
   if (scanMode() === "strict") return SUBJECT_STRICT.test(s) && (pdf || (t.match(BODY) || []).length >= 2);
   const bodyHits = (t.match(BODY) || []).length;
   const bodyStrong = (t.match(/rate\s*confirmation|carrier\s*rate|linehaul|consignee/gi) || []).length;

@@ -3,7 +3,16 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { unseal } from "@/lib/crypto";
 import { ingestMime } from "./ingest";
-import { scanMode, subjectPasses } from "./filter";
+import { requirePdf, scanMode, subjectPasses } from "./filter";
+
+/* Walk a BODYSTRUCTURE tree looking for a PDF part, without fetching the body. */
+function hasPdfPart(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  const n = node as { type?: string; disposition?: string; dispositionParameters?: { filename?: string }; parameters?: { name?: string }; childNodes?: unknown[] };
+  const name = n.dispositionParameters?.filename || n.parameters?.name || "";
+  if ((n.type || "").toLowerCase() === "application/pdf" || /\.pdf$/i.test(name)) return true;
+  return (n.childNodes || []).some(hasPdfPart);
+}
 
 /* Gmail over IMAP with an App Password. No OAuth, no Google review.
    The carrier turns on 2-Step Verification, makes a 16-character app
@@ -56,8 +65,9 @@ export async function syncImapMailbox(mailboxId: string, opts: { budget?: number
     for (const uid of batch) {
       try {
         /* Envelope first (a few bytes). Only a subject that passes gets its body fetched. */
-        const env = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
+        const env = await client.fetchOne(String(uid), { envelope: true, bodyStructure: true }, { uid: true });
         if (!env || !subjectPasses(env.envelope?.subject || "")) { totals.skipped++; last = Math.max(last, uid); continue; }
+        if (requirePdf() && !hasPdfPart(env.bodyStructure)) { totals.skipped++; last = Math.max(last, uid); continue; }
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (msg && msg.source) {
           const r = await ingestMime(mb.accountId, mb.id, msg.source, `imap:${mb.address}:${uid}`);
