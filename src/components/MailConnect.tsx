@@ -16,7 +16,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
       const r = await api<{ first: { stored: number; skipped: number; errors: string[] } }>("/api/mail/gmail", { method: "POST", json: { address: addr, appPassword: pw } });
       flash(r.first.errors.length && !r.first.stored
         ? `Connected, but reading failed: ${r.first.errors[0]}`
-        : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}; the rest of your history fills in over the next hour.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
+        : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}. The rest of your history reads in the background, about 360 messages an hour; watch progress under Account → Sources.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
       onDone?.();
     } catch (x) { flash((x as Error).message, "err"); } finally { setBusy(null); }
   }
@@ -48,7 +48,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
           <div className="formrow"><label htmlFor="g-pw">App password</label><input id="g-pw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="xxxx xxxx xxxx xxxx" required /></div>
           <div style={{ gridColumn: "1 / -1" }}><button className="btn btn-lg" disabled={busy === "gmail"}>{busy === "gmail" ? <><span className="spin" />Checking the login and reading your first rate cons…</> : "Connect Gmail"}</button></div>
         </form>
-        <p className="hint">Works with Google Workspace too, as long as 2-Step Verification is on. Revoke it any time from the same Google page. Sends go out from this address.</p>
+        <p className="hint">Works with Google Workspace too, as long as 2-Step Verification is on. Your first rate cons show within a minute; the full history reads in the background at about 360 messages an hour. Disconnect any time under Account &rarr; Sources, or revoke the app password from the same Google page.</p>
       </div>
 
       {me?.features.microsoft && (

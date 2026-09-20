@@ -68,7 +68,8 @@ export async function syncImapMailbox(mailboxId: string, opts: { budget?: number
     }
     const note = totals.errors.length && !totals.stored ? `Reading failed: ${totals.errors[0]}` : null;
     if (totals.errors.length) console.error("[imap]", mb.address, totals.errors.slice(0, 3));
-    await db.update(schema.mailboxes).set({ lastUid: last, lastSyncAt: new Date(), status: "ok", error: note, historyDone: uids.length <= budget }).where(eq(schema.mailboxes.id, mb.id));
+    await db.update(schema.mailboxes).set({ lastUid: last, lastSyncAt: new Date(), status: "ok", error: note, historyDone: uids.length <= budget,
+      queued: Math.max(0, uids.length - batch.length), readCount: mb.readCount + totals.stored }).where(eq(schema.mailboxes.id, mb.id));
   } catch (e) {
     await db.update(schema.mailboxes).set({ status: "error", error: (e as Error).message }).where(eq(schema.mailboxes.id, mb.id));
     totals.errors.push((e as Error).message);

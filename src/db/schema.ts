@@ -38,6 +38,8 @@ export const mailboxes = pgTable("mailboxes", {
   address: text("address").notNull(),
   secret: text("secret"),                       // encrypted: app password, or OAuth refresh token
   lastUid: integer("last_uid").notNull().default(0),
+  queued: integer("queued").notNull().default(0),        // messages still to read after the last pass
+  readCount: integer("read_count").notNull().default(0), // loads stored from this mailbox
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   historyDone: boolean("history_done").notNull().default(false),
   status: text("status").notNull().default("ok"),
@@ -93,6 +95,20 @@ export const loads = pgTable("loads", {
   index("loads_account_idx").on(t.accountId),
   uniqueIndex("loads_source_idx").on(t.accountId, t.sourceRef),
 ]);
+
+/* Every stop on a load. A multi-stop tender has several pickups and drops;
+   each pickup is a shipper observation, each drop is a receiver. */
+export const stops = pgTable("stops", {
+  id: id(),
+  loadId: text("load_id").notNull().references(() => loads.id, { onDelete: "cascade" }),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  kind: text("kind").notNull(),                 // pickup | drop
+  facilityId: text("facility_id").references(() => facilities.id),
+  city: text("city"),
+  state: text("state"),
+  at: timestamp("at", { withTimezone: true }),
+}, (t) => [index("stops_account_idx").on(t.accountId), index("stops_facility_idx").on(t.facilityId)]);
 
 /* ---------- prospects & contacts ---------- */
 export const prospects = pgTable("prospects", {

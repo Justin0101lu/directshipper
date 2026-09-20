@@ -31,7 +31,7 @@ export async function startSequence(accountId: string, contactId: string) {
   const [user] = await db.select().from(schema.users).where(eq(schema.users.accountId, accountId)).limit(1);
   const prof = await computeProfile(accountId);
   const L = schema.loads;
-  const [dcount] = await db.select({ n: schema._sql<number>`count(*)` }).from(L).where(and(eq(L.accountId, accountId), eq(L.destId, f.id)));
+  const [dcount] = await db.select({ n: schema._sql<number>`count(distinct ${schema.stops.loadId})` }).from(schema.stops).where(and(eq(schema.stops.accountId, accountId), eq(schema.stops.kind, "drop"), eq(schema.stops.facilityId, f.id)));
   const deliveries = Number(dcount?.n || 0);
   const ob = await outboundFor(f.id, accountId);
   const dh = prof.deadhead.find((d) => d.city.startsWith(f.city));

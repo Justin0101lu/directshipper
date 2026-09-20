@@ -14,7 +14,7 @@ export const GET = withSession(async (_req, s) => {
   const b = await balance(s.aid);
   return json({
     email: s.email, company: a.company, plan: a.plan, tokens: b,
-    mailboxes: mailboxes.map((m) => ({ id: m.id, kind: m.kind, address: m.address, status: m.status, error: m.error, lastSyncAt: m.lastSyncAt, historyDone: m.historyDone })),
+    mailboxes: mailboxes.map((m) => ({ id: m.id, kind: m.kind, address: m.address, status: m.status, error: m.error, lastSyncAt: m.lastSyncAt, historyDone: m.historyDone, queued: m.queued, readCount: m.readCount })),
     forwardAddress: `loads-${a.forwardToken}@${env.inbound.domain}`,
     features: { microsoft: msEnabled(), providers: providersReady(), ai: aiReady(), stripe: stripeReady() },
   });

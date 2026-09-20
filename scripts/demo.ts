@@ -36,8 +36,8 @@ function rc(p: typeof PICKUPS[number], d: typeof DESTS[number], br: string[], t:
     is_rate_confirmation: true, load_number: String(4400000 + Math.floor(rnd() * 90000)),
     broker: { name: br[0], mc: br[1], email: `dispatch@${br[0].toLowerCase().replace(/[^a-z]/g, "")}.com` },
     shipper: p.shipper,
-    pickup: { facility: p.facility, street: p.street, city: p.city, state: p.state, zip: p.zip, at: t.toISOString() },
-    delivery: { facility: d.facility, street: d.street, city: d.city, state: d.state, zip: null, at: new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3).toISOString() },
+    stops: [], pickup: { kind: "pickup", facility: p.facility, street: p.street, city: p.city, state: p.state, zip: p.zip, at: t.toISOString() },
+    delivery: { kind: "drop", facility: d.facility, street: d.street, city: d.city, state: d.state, zip: null, at: new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3).toISOString() },
     commodity: p.family === "produce" ? "Fresh produce" : "Frozen food", family: p.family, equipment: reefer ? "reefer" : "dry_van", temp_f: reefer ? (p.family === "produce" ? 34 : -10) : null,
     miles: d.miles, rate_total: Math.round((d.miles * perMi) / 10) * 10, confidence: 0.93,
   };
@@ -67,8 +67,8 @@ async function main() {
     if (rnd() < (backP[d.city] ?? 0.3)) {
       const home = pick(HOME_DOCKS);
       const t2 = new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3 + rnd() * 40 * 3600e3);
-      const back = rc({ facility: `${d.city} Outbound Dock`, street: d.street, city: d.city, state: d.state, zip: "", shipper: null, family: "frozen", w: 1 }, home, br, t2, 1.8 + rnd() * 1.2, true);
-      back.pickup.facility = d.facility; back.shipper = null;
+      const back = rc({ facility: `${d.city} Cold Dock`, street: `${100 + Math.floor(rnd() * 900)} Industrial Way`, city: d.city, state: d.state, zip: "", shipper: null, family: "frozen", w: 1 }, home, br, t2, 1.8 + rnd() * 1.2, true);
+      back.shipper = null;
       if (await storeLoad(acct.id, mb.id, `demo:${i}:back`, back, t2)) n++;
     }
   }

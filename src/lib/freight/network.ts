@@ -11,8 +11,10 @@ export type Outbound = { ok: true; loadsPerMonth: number; accounts: number; lane
 
 export async function outboundFor(facilityId: string, excludeAccountId?: string): Promise<Outbound> {
   const db = await getDb();
-  const L = schema.loads;
-  const where = excludeAccountId ? and(eq(L.originId, facilityId), ne(L.accountId, excludeAccountId)) : eq(L.originId, facilityId);
+  const L = schema.loads, ST = schema.stops;
+  /* Any load with a pickup stop at this dock counts, whichever stop it was. */
+  const pickedHere = sql`exists (select 1 from ${ST} s where s.load_id = ${L.id} and s.kind = 'pickup' and s.facility_id = ${facilityId})`;
+  const where = excludeAccountId ? and(pickedHere, ne(L.accountId, excludeAccountId)) : pickedHere;
   const [agg] = await db.select({
     accounts: sql<number>`count(distinct ${L.accountId})`, n: sql<number>`count(*)`,
     first: sql<Date>`min(${L.pickupAt})`, last: sql<Date>`max(${L.pickupAt})`,

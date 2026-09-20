@@ -22,8 +22,9 @@ async function activeBrokers(accountId: string) {
 export async function receivers(accountId: string): Promise<Receiver[]> {
   const db = await getDb();
   const L = schema.loads;
-  const rows = await db.select({ id: L.destId, n: sql<number>`count(*)`, last: sql<Date>`max(${L.pickupAt})` })
-    .from(L).where(and(eq(L.accountId, accountId), sql`${L.destId} is not null`)).groupBy(L.destId).orderBy(sql`count(*) desc`).limit(40);
+  const ST = schema.stops;
+  const rows = await db.select({ id: ST.facilityId, n: sql<number>`count(distinct ${ST.loadId})`, last: sql<Date>`max(${ST.at})` })
+    .from(ST).where(and(eq(ST.accountId, accountId), eq(ST.kind, "drop"), sql`${ST.facilityId} is not null`)).groupBy(ST.facilityId).orderBy(sql`count(distinct ${ST.loadId}) desc`).limit(40);
   const brokers = await activeBrokers(accountId);
   const out: Receiver[] = [];
   for (const r of rows) {
@@ -33,7 +34,8 @@ export async function receivers(accountId: string): Promise<Receiver[]> {
     /* Broker hold: one of the carrier's current brokers tenders loads that originate here. */
     let hold = false;
     if (brokers.length) {
-      const [h] = await db.select({ c: sql<number>`count(*)` }).from(L).where(and(eq(L.accountId, accountId), eq(L.originId, f.id), inArray(L.broker, brokers)));
+      const [h] = await db.select({ c: sql<number>`count(*)` }).from(L).where(and(eq(L.accountId, accountId), inArray(L.broker, brokers),
+        sql`exists (select 1 from ${schema.stops} s where s.load_id = ${L.id} and s.kind = 'pickup' and s.facility_id = ${f.id})`));
       hold = Number(h?.c || 0) > 0;
     }
     const deliveries = Number(r.n);
@@ -59,16 +61,16 @@ export async function lookalikes(accountId: string, opts: { originState?: string
   const prof = await computeProfile(accountId);
   const family = opts.family || (prof.families[0]?.name.startsWith("Frozen") ? "frozen" : prof.families[0]?.name.startsWith("Fresh") ? "produce" : "dry");
   const equipment = opts.equipment || (prof.equipment[0]?.name === "Dry van" ? "dry_van" : prof.equipment[0]?.name === "Flatbed" ? "flatbed" : "reefer");
-  const mine = (await db.select({ id: L.originId }).from(L).where(and(eq(L.accountId, accountId), sql`${L.originId} is not null`)).groupBy(L.originId)).map((r) => r.id!);
-  const mineDest = (await db.select({ id: L.destId }).from(L).where(and(eq(L.accountId, accountId), sql`${L.destId} is not null`)).groupBy(L.destId)).map((r) => r.id!);
+  const ST = schema.stops;
+  /* Every dock this carrier has touched, as a pickup or a drop. */
+  const known = (await db.select({ id: ST.facilityId }).from(ST).where(and(eq(ST.accountId, accountId), sql`${ST.facilityId} is not null`)).groupBy(ST.facilityId)).map((r) => r.id!);
   const brokers = await activeBrokers(accountId);
 
-  const conds = [ne(L.accountId, accountId), eq(L.family, family), eq(L.equipment, equipment), sql`${L.originId} is not null`];
-  if (opts.originState) conds.push(eq(L.originState, opts.originState.toUpperCase()));
-  const known = [...mine, ...mineDest];
-  if (known.length) conds.push(notInArray(L.originId, known));
-  const cands = await db.select({ id: L.originId, n: sql<number>`count(*)`, accounts: sql<number>`count(distinct ${L.accountId})` })
-    .from(L).where(and(...conds)).groupBy(L.originId).orderBy(sql`count(*) desc`).limit(60);
+  const conds = [ne(L.accountId, accountId), eq(L.family, family), eq(L.equipment, equipment), eq(ST.kind, "pickup"), sql`${ST.facilityId} is not null`];
+  if (opts.originState) conds.push(eq(ST.state, opts.originState.toUpperCase()));
+  if (known.length) conds.push(notInArray(ST.facilityId, known));
+  const cands = await db.select({ id: ST.facilityId, n: sql<number>`count(*)`, accounts: sql<number>`count(distinct ${L.accountId})` })
+    .from(ST).innerJoin(L, eq(ST.loadId, L.id)).where(and(...conds)).groupBy(ST.facilityId).orderBy(sql`count(*) desc`).limit(60);
 
   const out: Lookalike[] = [];
   let excluded = 0;
@@ -78,7 +80,8 @@ export async function lookalikes(accountId: string, opts: { originState?: string
     if (ob.loadsPerMonth < (opts.minPerMonth ?? 4)) continue;
     /* Broker relationship exclusion: the carrier's active brokers tender out of this dock (seen anywhere in the network). */
     if (brokers.length) {
-      const [h] = await db.select({ c: sql<number>`count(*)` }).from(L).where(and(eq(L.originId, c.id!), inArray(L.broker, brokers)));
+      const [h] = await db.select({ c: sql<number>`count(*)` }).from(L).where(and(inArray(L.broker, brokers),
+        sql`exists (select 1 from ${ST} s where s.load_id = ${L.id} and s.kind = 'pickup' and s.facility_id = ${c.id!})`));
       if (Number(h?.c || 0) > 0) { excluded++; continue; }
     }
     const [f] = await db.select().from(F).where(eq(F.id, c.id!));

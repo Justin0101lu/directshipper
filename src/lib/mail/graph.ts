@@ -68,7 +68,8 @@ export async function syncGraphMailbox(mailboxId: string, opts: { budget?: numbe
         totals.stored += res.stored; totals.skipped += res.skipped; totals.errors.push(...res.errors);
       } catch (e) { totals.errors.push((e as Error).message); }
     }
-    await db.update(schema.mailboxes).set({ lastUid: mb.lastUid + items.length, lastSyncAt: new Date(), status: "ok", error: null, historyDone: items.length < budget }).where(eq(schema.mailboxes.id, mb.id));
+    await db.update(schema.mailboxes).set({ lastUid: mb.lastUid + items.length, lastSyncAt: new Date(), status: "ok", error: null, historyDone: items.length < budget,
+      queued: items.length < budget ? 0 : budget, readCount: mb.readCount + totals.stored }).where(eq(schema.mailboxes.id, mb.id));
   } catch (e) {
     await db.update(schema.mailboxes).set({ status: "error", error: (e as Error).message }).where(eq(schema.mailboxes.id, mb.id));
     totals.errors.push((e as Error).message);
