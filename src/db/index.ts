@@ -11,7 +11,9 @@ type Db = ReturnType<typeof drizzlePg<typeof schema>> | ReturnType<typeof drizzl
 const g = globalThis as unknown as { __ds_db?: Promise<Db>; __ds_migrated?: boolean };
 
 async function open(): Promise<Db> {
-  const url = process.env.DATABASE_URL;
+  /* A blank or still-placeholder DATABASE_URL means "use the embedded database". */
+  const raw = (process.env.DATABASE_URL || "").trim();
+  const url = raw && !/user:pass@host|<|>|\.\.\./.test(raw) ? raw : "";
   if (url) {
     const postgres = (await import("postgres")).default;
     const client = postgres(url, { max: 5, prepare: false });
