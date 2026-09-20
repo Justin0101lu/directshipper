@@ -10,6 +10,7 @@ export type Me = {
   tokens: { monthly: number; extra: number; total: number; cap: number };
   mailboxes: { id: string; kind: string; address: string; status: string; error: string | null; lastSyncAt: string | null; historyDone: boolean; queued: number; readCount: number }[];
   forwardAddress: string;
+  batchQueue: number;
   features: { microsoft: boolean; providers: string[]; ai: boolean; stripe: boolean };
 };
 const MeCtx = createContext<{ me: Me | null; refresh: () => void }>({ me: null, refresh: () => {} });

@@ -47,6 +47,25 @@ export const mailboxes = pgTable("mailboxes", {
   createdAt: now(),
 });
 
+/* Documents waiting on a half-price batch (history scans only). Holds the
+   trimmed text, never the PDF bytes. */
+export const parseQueue = pgTable("parse_queue", {
+  id: id(),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  mailboxId: text("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
+  sourceRef: text("source_ref").notNull(),
+  docHash: text("doc_hash"),
+  filename: text("filename"),
+  fromEmail: text("from_email"),
+  text: text("text").notNull(),
+  hasScan: boolean("has_scan").notNull().default(false),
+  receivedAt: timestamp("received_at", { withTimezone: true }),
+  status: text("status").notNull().default("queued"),   // queued | submitted | done | failed
+  batchId: text("batch_id"),
+  error: text("error"),
+  createdAt: now(),
+}, (t) => [index("parse_queue_status_idx").on(t.status), index("parse_queue_account_idx").on(t.accountId)]);
+
 /* ---------- freight ---------- */
 export const facilities = pgTable("facilities", {
   id: id(),

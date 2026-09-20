@@ -6,32 +6,20 @@ import { claude, PARSE_MODEL } from "./client";
 /* The rate con reader. One document in, one structured load out.
    Runs on PDFs (base64) and on plain text (email bodies, OCR'd scans). */
 
-/* The API allows at most 16 optional (nullable/union) fields per schema, so
-   every text field is required and "" means "not on the page". Only the
-   three numbers stay nullable. toRateCon() turns "" back into null. */
-const S = z.string().describe('the value as written, or "" if not on the page');
-const Place = z.object({
-  kind: z.enum(["pickup", "drop"]),
-  facility: S, street: S, city: S,
-  state: z.string().describe('two-letter US state or CA province, or ""'),
-  zip: S,
-  at: z.string().describe('ISO 8601 date or datetime, or ""'),
-});
+/* Wire schema is deliberately terse: output tokens cost five times input,
+   so short keys and no descriptions we can put in the system prompt instead.
+   At most 16 optional fields per schema (API limit); only three numbers are
+   nullable, "" means "not on the page". */
+const S = z.string();
+const StopW = z.object({ k: z.enum(["p", "d"]), f: S, a: S, c: S, s: S, z: S, t: S });
 const WireSchema = z.object({
-  is_rate_confirmation: z.boolean().describe("true only if this document is a carrier rate confirmation / load tender for a truckload shipment"),
-  load_number: S,
-  broker_name: S,
-  broker_mc: z.string().describe('MC number digits only, no prefix, or ""'),
-  broker_email: S,
-  shipper: z.string().describe('the company that owns the freight, if it can be told apart from the pickup facility; else ""'),
-  stops: z.array(Place).describe("every stop in order: all pickups and all drops, including multi-stop tenders"),
-  commodity: S,
-  family: z.enum(["frozen", "refrigerated", "produce", "beverage", "dry", "other", "unknown"]),
-  equipment: z.enum(["reefer", "dry_van", "flatbed", "other", "unknown"]),
-  temp_f: z.number().nullable(),
-  miles: z.number().nullable(),
-  rate_total: z.number().nullable().describe("total linehaul to the carrier in USD, including fuel if stated as all-in"),
-  confidence: z.number().min(0).max(1),
+  ok: z.boolean(),
+  ld: S, bn: S, bm: S, sh: S,
+  st: z.array(StopW),
+  cm: S,
+  fa: z.enum(["frozen", "refrigerated", "produce", "beverage", "dry", "other", "unknown"]),
+  eq: z.enum(["reefer", "dry_van", "flatbed", "other", "unknown"]),
+  tf: z.number().nullable(), mi: z.number().nullable(), rt: z.number().nullable(),
 });
 type Wire = z.infer<typeof WireSchema>;
 
@@ -45,38 +33,39 @@ export type RateCon = {
   pickup: Stop;      // first pickup
   delivery: Stop;    // last drop
   commodity: string | null;
-  family: Wire["family"];
-  equipment: Wire["equipment"];
+  family: Wire["fa"];
+  equipment: Wire["eq"];
   temp_f: number | null;
   miles: number | null;
   rate_total: number | null;
   confidence: number;
 };
 const n = (v: string) => (v && v.trim() ? v.trim() : null);
-const place = (p: Wire["stops"][number]): Stop => ({ kind: p.kind, facility: n(p.facility), street: n(p.street), city: n(p.city), state: n(p.state), zip: n(p.zip), at: n(p.at) });
+const place = (p: Wire["st"][number]): Stop => ({ kind: p.k === "p" ? "pickup" : "drop", facility: n(p.f), street: n(p.a), city: n(p.c), state: n(p.s), zip: n(p.z), at: n(p.t) });
 const EMPTY = (kind: Stop["kind"]): Stop => ({ kind, facility: null, street: null, city: null, state: null, zip: null, at: null });
 export function toRateCon(w: Wire): RateCon {
-  const stops = w.stops.map(place);
+  const stops = w.st.map(place);
   const pickups = stops.filter((s) => s.kind === "pickup"), drops = stops.filter((s) => s.kind === "drop");
   return {
-    is_rate_confirmation: w.is_rate_confirmation, load_number: n(w.load_number),
-    broker: { name: n(w.broker_name), mc: n(w.broker_mc), email: n(w.broker_email) },
-    shipper: n(w.shipper), stops, pickup: pickups[0] || EMPTY("pickup"), delivery: drops[drops.length - 1] || EMPTY("drop"),
-    commodity: n(w.commodity), family: w.family, equipment: w.equipment,
-    temp_f: w.temp_f, miles: w.miles, rate_total: w.rate_total, confidence: w.confidence,
+    is_rate_confirmation: w.ok, load_number: n(w.ld),
+    broker: { name: n(w.bn), mc: n(w.bm), email: null },
+    shipper: n(w.sh), stops, pickup: pickups[0] || EMPTY("pickup"), delivery: drops[drops.length - 1] || EMPTY("drop"),
+    commodity: n(w.cm), family: w.fa, equipment: w.eq,
+    temp_f: w.tf, miles: w.mi, rate_total: w.rt, confidence: 0.9,
   };
 }
+export function parseWireJson(text: string): RateCon {
+  return toRateCon(WireSchema.parse(JSON.parse(text)));
+}
 
-const SYSTEM = `You read trucking paperwork for a small carrier. Given one document, extract the fields of the rate confirmation exactly as written. Rules:
-- Broker is the party paying the carrier (the tendering company on the confirmation), never the carrier.
-- Stops: list every stop in order, pickups and drops both. A tender with two pickups and one drop has three stops. Never merge or skip a stop.
-- Shipper is the company that owns the freight when the paperwork names one distinct from the pickup facility (for example a 3PL cold storage pickup with a "Customer" or "Account" line). Otherwise "".
-- Family: frozen (temp at or below 0F or the word frozen), refrigerated (33-45F, chilled, cold), produce (fresh fruit/vegetables, even if refrigerated), beverage, dry, other. Unknown if not stated.
-- Equipment: reefer for any refrigerated trailer; dry_van for van; flatbed; other; unknown.
-- Miles: as stated; do not estimate.
-- Rate total: the carrier's linehaul total. If separate fuel surcharge is stated, add it. Ignore accessorials.
-- Set is_rate_confirmation false for anything that is not a rate con or load tender (invoices, BOLs, newsletters).
-- Never invent a value. Use "" for a text field and null for a number when it is not on the page.`;
+const SYSTEM = `You read trucking paperwork for a small carrier. Given one document, return the rate confirmation's fields as JSON with these keys:
+ok: true only if this is a carrier rate confirmation / load tender for a truckload shipment (not an invoice, BOL alone, newsletter).
+ld: load or reference number. bn: broker name, the party paying the carrier (never the carrier). bm: broker MC digits only.
+sh: the company that owns the freight if named apart from the pickup facility (a "Customer" or "Account" line at a 3PL), else "".
+st: every stop in order. k: "p" pickup or "d" drop. f facility name, a street, c city, s two-letter state, z zip, t ISO date/datetime. A tender with two pickups and one drop has three stops; never merge or skip one.
+cm: commodity as written. fa: frozen (<=0F or the word frozen) | refrigerated (33-45F, chilled) | produce (fresh fruit/veg) | beverage | dry | other | unknown.
+eq: reefer | dry_van | flatbed | other | unknown. tf: temperature F. mi: miles as stated, never estimated. rt: total linehaul to the carrier in USD including fuel; ignore accessorials.
+Never invent a value. "" for an unknown text field, null for an unknown number.`;
 
 /* Text first. A PDF sent as a document costs ~2,000 tokens a page in images;
    its extracted text costs a few hundred. Only a scanned PDF with no text
@@ -91,26 +80,40 @@ async function pdfText(b64: string): Promise<string> {
   } catch { return ""; }
 }
 
-export async function parseRateCon(input: { pdfBase64?: string; text?: string; filename?: string }): Promise<RateCon> {
+/* Legal boilerplate is half of most rate cons and holds no field we want.
+   Cut at the first terms heading past the top of the page, cap the rest. */
+const TERMS = /terms\s*(and|&)\s*conditions|carrier\s+(agrees|shall|acknowledges|must)|indemnif|hold\s+harmless|by\s+(signing|accepting)|accessorial\s+(terms|policy|schedule)|detention\s+(policy|terms)|payment\s+terms|general\s+(terms|provisions)/i;
+export function trimDoc(text: string, cap = 7000) {
+  const m = TERMS.exec(text);
+  const cut = m && m.index > 700 ? text.slice(0, m.index) : text;
+  return cut.slice(0, cap);
+}
+
+/* Build the request once; used live and inside a half-price batch. */
+export async function buildParseRequest(input: { pdfBase64?: string; text?: string; filename?: string }) {
   const content: Anthropic.ContentBlockParam[] = [];
   let pdfAsText = "";
   if (input.pdfBase64) pdfAsText = await pdfText(input.pdfBase64);
   if (input.pdfBase64 && pdfAsText.length < 200) {
     content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: input.pdfBase64 } });
   }
-  const text = [pdfAsText ? `PDF text${input.filename ? ` (${input.filename})` : ""}:\n\n${pdfAsText.slice(0, 24_000)}` : "", input.text ? `Email:\n\n${input.text.slice(0, 6_000)}` : ""].filter(Boolean).join("\n\n");
+  const text = [pdfAsText ? `PDF${input.filename ? ` (${input.filename})` : ""}:\n${trimDoc(pdfAsText)}` : "", input.text ? `Email:\n${trimDoc(input.text, pdfAsText ? 800 : 5000)}` : ""].filter(Boolean).join("\n\n");
   if (text) content.push({ type: "text", text });
-  content.push({ type: "text", text: "Extract the rate confirmation." });
-
-  const res = await claude().messages.parse({
+  const params = {
     model: PARSE_MODEL,
-    max_tokens: 2000,
-    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    max_tokens: 1200,
+    system: [{ type: "text" as const, text: SYSTEM, cache_control: { type: "ephemeral" as const } }],
     output_config: { format: zodOutputFormat(WireSchema) },
-    messages: [{ role: "user", content }],
-  });
+    messages: [{ role: "user" as const, content }],
+  };
+  return { params, mode: pdfAsText ? "text" : input.pdfBase64 ? "scan" : "email", textOnly: text };
+}
+
+export async function parseRateCon(input: { pdfBase64?: string; text?: string; filename?: string }): Promise<RateCon> {
+  const { params, mode } = await buildParseRequest(input);
+  const res = await claude().messages.parse(params);
   const u = res.usage;
-  console.log(`[reader] ${input.filename || "email"} in=${u.input_tokens} out=${u.output_tokens} ${pdfAsText ? "text" : input.pdfBase64 ? "scan" : "email"}`);
+  console.log(`[reader] ${input.filename || "email"} in=${u.input_tokens} out=${u.output_tokens} ${mode}`);
   if (!res.parsed_output) throw new Error("The reader could not make sense of that document.");
   return toRateCon(res.parsed_output);
 }

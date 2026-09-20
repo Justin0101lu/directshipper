@@ -53,7 +53,7 @@ export default function Sources() {
               <td data-label="Last read" className="num">{m.lastSyncAt ? new Date(m.lastSyncAt).toLocaleString() : "—"}</td>
               <td data-label="" className="right">{(m.kind === "gmail_imap" || m.kind === "microsoft") && <span style={{ display: "inline-flex", gap: 6 }}><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => rescan(m.id)} disabled={busy} title="Start the history walk over from the oldest message">Rescan</button><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(m.id, m.address)}>Remove</button></span>}</td></tr>)}
           </tbody></table>
-          <p className="hint">The first scan walks your whole mailbox oldest-first, 60 messages every 10 minutes, so a mailbox with 2,000 rate cons takes about 6 hours. You can close this window; it keeps going. Scan now runs one pass right away. After the history is in, new rate cons show up within 10 minutes of landing.</p>
+          <p className="hint">The first scan walks your whole mailbox oldest-first, 60 messages every 10 minutes. Rate cons found during that scan are read in half-price batches: results land within the hour, at most a day.{me.batchQueue ? ` ${me.batchQueue} waiting on a batch right now.` : ""} You can close this window; it keeps going. After the history is in, new rate cons are read within 10 minutes of landing.</p>
           {me.mailboxes.some((m) => m.error) && <p className="hint" style={{ color: "var(--red)" }}>{me.mailboxes.filter((m) => m.error).map((m) => `${m.address}: ${m.error}`).join(" · ")}</p>}
         </div>
       )}

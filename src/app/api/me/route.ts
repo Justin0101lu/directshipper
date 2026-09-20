@@ -7,6 +7,7 @@ import { providersReady } from "@/lib/enrich";
 import { aiReady } from "@/lib/ai/client";
 import { stripeReady } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { queueDepth } from "@/lib/ai/batch";
 export const GET = withSession(async (_req, s) => {
   const db = await getDb();
   const [a] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, s.aid));
@@ -16,6 +17,7 @@ export const GET = withSession(async (_req, s) => {
     email: s.email, company: a.company, plan: a.plan, tokens: b,
     mailboxes: mailboxes.map((m) => ({ id: m.id, kind: m.kind, address: m.address, status: m.status, error: m.error, lastSyncAt: m.lastSyncAt, historyDone: m.historyDone, queued: m.queued, readCount: m.readCount })),
     forwardAddress: `loads-${a.forwardToken}@${env.inbound.domain}`,
+    batchQueue: await queueDepth(s.aid),
     features: { microsoft: msEnabled(), providers: providersReady(), ai: aiReady(), stripe: stripeReady() },
   });
 });

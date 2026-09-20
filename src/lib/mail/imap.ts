@@ -48,7 +48,7 @@ export async function syncImapMailbox(mailboxId: string, opts: { budget?: number
   if (!mb || !mb.secret) return { stored: 0, skipped: 0, errors: ["no mailbox"] };
   const { host } = HOSTS[mb.kind] || HOSTS.gmail_imap;
   const client = new ImapFlow({ host: host || "imap.gmail.com", port: 993, secure: true, auth: { user: mb.address, pass: unseal(mb.secret) }, logger: false, ...NET });
-  const totals = { stored: 0, skipped: 0, errors: [] as string[] };
+  const totals = { stored: 0, skipped: 0, queued: 0, errors: [] as string[] };
   const budget = opts.budget ?? 150;            // messages per run, keeps a cron tick short
   try {
     await client.connect();
@@ -70,8 +70,8 @@ export async function syncImapMailbox(mailboxId: string, opts: { budget?: number
         if (requirePdf() && !hasPdfPart(env.bodyStructure)) { totals.skipped++; last = Math.max(last, uid); continue; }
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (msg && msg.source) {
-          const r = await ingestMime(mb.accountId, mb.id, msg.source, `imap:${mb.address}:${uid}`);
-          totals.stored += r.stored; totals.skipped += r.skipped + (r.dupes || 0); totals.errors.push(...r.errors);
+          const r = await ingestMime(mb.accountId, mb.id, msg.source, `imap:${mb.address}:${uid}`, { batch: !mb.historyDone });
+          totals.stored += r.stored; totals.skipped += r.skipped + (r.dupes || 0); totals.queued += r.queued || 0; totals.errors.push(...r.errors);
         }
       } catch (e) { totals.errors.push(`uid ${uid}: ${(e as Error).message}`); }
       last = Math.max(last, uid);

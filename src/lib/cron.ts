@@ -3,6 +3,7 @@ import { getDb, schema } from "@/db";
 import { syncImapMailbox } from "./mail/imap";
 import { syncGraphMailbox } from "./mail/graph";
 import { runDueSteps } from "./outreach";
+import { collectBatches, submitBatches } from "./ai/batch";
 
 export async function runCron() {
   const db = await getDb();
@@ -14,6 +15,9 @@ export async function runCron() {
     try { mail[mb.id] = mb.kind === "microsoft" ? await syncGraphMailbox(mb.id, { budget: 40 }) : await syncImapMailbox(mb.id, { budget: 60 }); }
     catch (e) { mail[mb.id] = { error: (e as Error).message }; }
   }
+  let batch: unknown = null;
+  try { const collected = await collectBatches(); const submitted = await submitBatches(); batch = { ...collected, ...submitted }; }
+  catch (e) { batch = { error: (e as Error).message }; }
   const outreach = await runDueSteps();
-  return { mailboxes: boxes.length, mail, outreach };
+  return { mailboxes: boxes.length, mail, batch, outreach };
 }
