@@ -38,3 +38,13 @@ describe("lane median", () => {
     expect(laneMedian(rows.slice(0, 2), "Ontario", "Phoenix")).toBeNull();
   });
 });
+
+import { subjectPasses } from "../src/lib/mail/filter";
+describe("strict subject gate", () => {
+  it("passes the subjects brokers actually use", () => {
+    for (const s of ["Rate Confirmation #4412093", "RATE CON - Ontario to Phoenix", "Load Tender BG686349323", "Carrier Confirmation Load 88213", "Tender-BG686349323", "Load # 4412 pickup Thursday", "Dispatch Sheet 9921", "BOL and rate con attached"]) expect(subjectPasses(s), s).toBe(true);
+  });
+  it("drops the rest without a model call", () => {
+    for (const s of ["Weekly market update", "Invoice #22910 past due", "Re: lunch Thursday", "Your QuickPay remittance", "Detention request load 4412"]) expect(subjectPasses(s), s).toBe(false);
+  });
+});

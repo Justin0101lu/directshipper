@@ -26,7 +26,7 @@ function family(rc: RateCon): string {
   return rc.family;
 }
 
-export async function storeLoad(accountId: string, mailboxId: string | null, sourceRef: string, rc: RateCon, receivedAt: Date) {
+export async function storeLoad(accountId: string, mailboxId: string | null, sourceRef: string, rc: RateCon, receivedAt: Date, docHash?: string) {
   const db = await getDb();
   const dup = await db.select({ id: schema.loads.id }).from(schema.loads).where(and(eq(schema.loads.accountId, accountId), eq(schema.loads.sourceRef, sourceRef))).limit(1);
   if (dup.length) return false;
@@ -40,7 +40,7 @@ export async function storeLoad(accountId: string, mailboxId: string | null, sou
   const pickupAt = first.at ? new Date(first.at) : receivedAt;
   const perMile = rc.rate_total && rc.miles ? Math.round((rc.rate_total / rc.miles) * 100) / 100 : null;
   const [load] = await db.insert(schema.loads).values({
-    accountId, mailboxId, sourceRef, loadNumber: rc.load_number,
+    accountId, mailboxId, sourceRef, docHash: docHash ?? null, loadNumber: rc.load_number,
     broker: rc.broker.name, brokerMc: rc.broker.mc, brokerEmail: rc.broker.email,
     shipper: rc.shipper, originId, destId,
     originCity: normCity(first.city), originState: normState(first.state),

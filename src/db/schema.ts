@@ -68,6 +68,7 @@ export const loads = pgTable("loads", {
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   mailboxId: text("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),
   sourceRef: text("source_ref"),                // message id / file name, dedupe key
+  docHash: text("doc_hash"),                    // sha256 of the PDF bytes or the email text: the same rate con sent twice is read once
   loadNumber: text("load_number"),
   broker: text("broker"),
   brokerMc: text("broker_mc"),
@@ -95,6 +96,7 @@ export const loads = pgTable("loads", {
 }, (t) => [
   index("loads_account_idx").on(t.accountId),
   uniqueIndex("loads_source_idx").on(t.accountId, t.sourceRef),
+  index("loads_hash_idx").on(t.accountId, t.docHash),
 ]);
 
 /* Every stop on a load. A multi-stop tender has several pickups and drops;

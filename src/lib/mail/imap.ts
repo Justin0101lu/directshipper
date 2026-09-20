@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { unseal } from "@/lib/crypto";
 import { ingestMime } from "./ingest";
+import { scanMode, subjectPasses } from "./filter";
 
 /* Gmail over IMAP with an App Password. No OAuth, no Google review.
    The carrier turns on 2-Step Verification, makes a 16-character app
@@ -45,18 +46,22 @@ export async function syncImapMailbox(mailboxId: string, opts: { budget?: number
     await openAll(client);
     /* UIDs are increasing; walk up from the last one we saw. */
     const range = mb.lastUid > 0 ? `${mb.lastUid + 1}:*` : "1:*";
-    const uids = (await client.search({ uid: range, or: [
-      { subject: "rate" }, { subject: "confirmation" }, { subject: "load" }, { subject: "tender" }, { subject: "dispatch" }, { body: "rate confirmation" },
-    ] }, { uid: true })) as number[];
+    const terms = scanMode() === "strict"
+      ? [{ subject: "rate con" }, { subject: "confirmation" }, { subject: "tender" }, { subject: "dispatch" }, { subject: "load #" }, { subject: "load number" }, { subject: "bol" }, { subject: "carrier" }]
+      : [{ subject: "rate" }, { subject: "confirmation" }, { subject: "load" }, { subject: "tender" }, { subject: "dispatch" }, { body: "rate confirmation" }];
+    const uids = (await client.search({ uid: range, or: terms }, { uid: true })) as number[];
     uids.sort((a, b) => a - b);
     const batch = uids.slice(0, budget);
     let last = mb.lastUid;
     for (const uid of batch) {
       try {
+        /* Envelope first (a few bytes). Only a subject that passes gets its body fetched. */
+        const env = await client.fetchOne(String(uid), { envelope: true }, { uid: true });
+        if (!env || !subjectPasses(env.envelope?.subject || "")) { totals.skipped++; last = Math.max(last, uid); continue; }
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (msg && msg.source) {
           const r = await ingestMime(mb.accountId, mb.id, msg.source, `imap:${mb.address}:${uid}`);
-          totals.stored += r.stored; totals.skipped += r.skipped; totals.errors.push(...r.errors);
+          totals.stored += r.stored; totals.skipped += r.skipped + (r.dupes || 0); totals.errors.push(...r.errors);
         }
       } catch (e) { totals.errors.push(`uid ${uid}: ${(e as Error).message}`); }
       last = Math.max(last, uid);
