@@ -10,6 +10,7 @@ import { computeProfile } from "@/lib/freight/profile";
 import { outboundFor } from "@/lib/freight/network";
 import { relationship, relationshipLine, type Relationship } from "@/lib/freight/relationship";
 import { visibleContacts, type Visible } from "@/lib/enrich";
+import { dockHolds, type DockHold } from "@/lib/freight/holds";
 import { PLANS, type PlanId } from "@/lib/plans";
 
 /* Outreach, prepared for the carrier.
@@ -19,10 +20,23 @@ import { PLANS, type PlanId } from "@/lib/plans";
    carrier reveals an email. Approving the opener sends it and schedules the
    rest; a reply stops everything and drafts the answer. */
 
-async function sendingMailbox(accountId: string) {
+export async function sendingMailboxes(accountId: string) {
   const db = await getDb();
   const rows = await db.select().from(schema.mailboxes).where(eq(schema.mailboxes.accountId, accountId));
-  return rows.find((m) => (m.kind === "gmail_imap" || m.kind === "microsoft") && m.secret) || null;
+  return rows.filter((m) => (m.kind === "gmail_imap" || m.kind === "microsoft") && m.secret);
+}
+/* The mailbox a sequence sends from: the one pinned to it, else the account's first. */
+async function sendingMailbox(accountId: string, preferId?: string | null) {
+  const boxes = await sendingMailboxes(accountId);
+  return (preferId && boxes.find((m) => m.id === preferId)) || boxes[0] || null;
+}
+const signerOf = (mb: { senderName: string | null; address: string } | null, fallback: string) => mb?.senderName || fallback;
+
+export async function setSender(accountId: string, sequenceId: string, mailboxId: string) {
+  const db = await getDb();
+  const boxes = await sendingMailboxes(accountId);
+  if (!boxes.find((m) => m.id === mailboxId)) throw new Error("That mailbox is not connected to this account.");
+  await db.update(schema.sequences).set({ mailboxId }).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
 }
 
 /* Write the seven touches for one dock. Costs one drafting call; no tokens. */
@@ -30,6 +44,8 @@ export async function prepareDock(accountId: string, facilityId: string) {
   const db = await getDb();
   const existing = await db.select().from(schema.sequences).where(and(eq(schema.sequences.accountId, accountId), eq(schema.sequences.facilityId, facilityId))).limit(1);
   if (existing.length) return existing[0];
+  const hold = await dockHolds(accountId, facilityId);
+  if (!hold.clear) throw new Error(hold.reason);
   if (!aiReady()) throw new Error("ANTHROPIC_API_KEY is not set, so nothing can be drafted.");
   const rel = await relationship(accountId, facilityId);
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, facilityId));
@@ -41,7 +57,7 @@ export async function prepareDock(accountId: string, facilityId: string) {
   const dh = prof.deadhead.find((d) => d.city.startsWith(f.city));
   const summary = rel ? relationshipLine(rel) : "No loads with this dock yet; matched to your freight profile.";
   const touches = await draftSequence({
-    carrier: acct.company, signer: user?.name || acct.company, contactFirst: null, contactTitle: null,
+    carrier: acct.company, signer: "{{signer}}", contactFirst: null, contactTitle: null,
     facility: f.name, city: `${f.city}, ${f.state}`, relationship: summary, kind: rel ? rel.kind : "lookalike",
     theirOutbound: ob.ok && ob.lanes[0] ? `about ${ob.loadsPerMonth} loads a month, ${ob.lanes[0].dest} ${ob.lanes[0].pct}% of it` : null,
     ourHome: prof.home || "our home base", equipment: prof.equipment[0]?.name === "Dry van" ? "53' dry vans" : "53' reefers", family: prof.families[0]?.name?.toLowerCase() || "food freight",
@@ -59,17 +75,8 @@ export async function rankedDocks(accountId: string, limit = 40): Promise<Relati
   const ST = schema.stops;
   const ids = await db.select({ id: ST.facilityId, n: sql<number>`count(distinct ${ST.loadId})` }).from(ST)
     .where(and(eq(ST.accountId, accountId), sql`${ST.facilityId} is not null`)).groupBy(ST.facilityId).orderBy(sql`count(distinct ${ST.loadId}) desc`).limit(limit * 2);
-  /* A dock we only pick up from, through a broker we still work with, is that
-     broker's customer. It never makes the list. Receivers are ours. */
-  const since = new Date(Date.now() - 365 * 86400e3);
-  const active = new Set((await db.select({ b: schema.loads.broker }).from(schema.loads).where(and(eq(schema.loads.accountId, accountId), sql`${schema.loads.pickupAt} >= ${since}`)).groupBy(schema.loads.broker)).map((r) => r.b).filter(Boolean) as string[]);
   const out: Relationship[] = [];
-  for (const r of ids) {
-    const rel = await relationship(accountId, r.id!);
-    if (!rel) continue;
-    if (rel.deliveries === 0 && rel.brokerNames.some((b) => active.has(b))) continue;
-    out.push(rel);
-  }
+  for (const r of ids) { const rel = await relationship(accountId, r.id!); if (rel) out.push(rel); }
   return out.sort((a, b) => b.warmth - a.warmth).slice(0, limit);
 }
 
@@ -81,6 +88,7 @@ export async function prepareTop(accountId: string, n = 3) {
   let made = 0;
   for (const d of docks) {
     if (have.has(d.facilityId) || d.loads < 2) continue;
+    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;          // autopilot never touches a held dock
     try { await prepareDock(accountId, d.facilityId); made++; } catch (e) { console.error("[outreach] draft failed", d.name, (e as Error).message); }
     if (made >= n) break;
   }
@@ -117,19 +125,23 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
   if (!PLANS[acct.plan as PlanId].outreach) throw new Error("Sending is on Carrier and Fleet. Drafting stays free.");
   if (!seq.contactId) throw new Error("Pick a person at this dock first.");
+  const hold = await dockHolds(accountId, seq.facilityId);
+  if (!hold.clear) throw new Error(hold.reason);
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
   const has = await revealed(accountId, c.id);
   if (!has.has("email") || !c.email) throw new Error("Reveal a verified email first (1 token).");
   if (c.emailStatus === "bounced") throw new Error("That address bounced. Reveal a new one.");
-  const mb = await sendingMailbox(accountId);
+  const mb = await sendingMailbox(accountId, seq.mailboxId);
   if (!mb) throw new Error("Connect a Gmail or Outlook mailbox to send from.");
+  const [user] = await db.select().from(schema.users).where(eq(schema.users.accountId, accountId)).limit(1);
+  const signer = signerOf(mb, user?.name || acct.company);
   const [t] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
   const first = has.has("name") && c.name ? c.name.split(" ")[0] : null;
-  const subject = personalize(edited?.subject ?? t.subject ?? "Your outbound freight", first);
-  const body = personalize(edited?.body ?? t.body, first);
+  const subject = personalize(edited?.subject ?? t.subject ?? "Your outbound freight", first, signer);
+  const body = personalize(edited?.body ?? t.body, first, signer);
   const { messageId } = await sendAs(mb.id, { to: c.email, subject, text: body });
   await db.update(schema.touches).set({ status: "sent", subject, body, messageId, sentAt: new Date() }).where(eq(schema.touches.id, t.id));
-  await db.update(schema.sequences).set({ status: "active", step: 1, threadId: messageId, nextAt: new Date(Date.now() + SEQUENCE[1].day * 86400e3) }).where(eq(schema.sequences.id, seq.id));
+  await db.update(schema.sequences).set({ status: "active", step: 1, threadId: messageId, mailboxId: mb.id, nextAt: new Date(Date.now() + SEQUENCE[1].day * 86400e3) }).where(eq(schema.sequences.id, seq.id));
 }
 
 export async function pause(accountId: string, sequenceId: string, on: boolean) {
@@ -147,22 +159,26 @@ export async function runDueSteps() {
       await checkReply(seq.id);
       const [fresh] = await db.select().from(schema.sequences).where(eq(schema.sequences.id, seq.id));
       if (fresh.status !== "active" || !fresh.contactId) continue;
+      if (!(await dockHolds(seq.accountId, seq.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this dock." }).where(eq(schema.sequences.id, seq.id)); continue; }
       const step = fresh.step;
       if (step >= SEQUENCE.length) { await db.update(schema.sequences).set({ status: "done", nextAt: null }).where(eq(schema.sequences.id, seq.id)); continue; }
       const [t] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, step)));
       const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, fresh.contactId));
       const has = await revealed(seq.accountId, c.id);
       const first = has.has("name") && c.name ? c.name.split(" ")[0] : null;
+      const mbx = await sendingMailbox(seq.accountId, fresh.mailboxId);
+      const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, seq.accountId));
+      const signer = signerOf(mbx, acct.company);
       if (t.channel === "email") {
-        const mb = await sendingMailbox(seq.accountId);
+        const mb = mbx;
         if (!mb || !c.email || c.emailStatus === "bounced") { await db.update(schema.sequences).set({ status: "paused" }).where(eq(schema.sequences.id, seq.id)); continue; }
         const [opener] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
-        const body = personalize(t.body, first);
+        const body = personalize(t.body, first, signer);
         const { messageId } = await sendAs(mb.id, { to: c.email, subject: `Re: ${opener.subject}`, text: body, inReplyTo: seq.threadId || undefined, references: seq.threadId || undefined });
         await db.update(schema.touches).set({ status: "sent", body, messageId, sentAt: new Date() }).where(eq(schema.touches.id, t.id));
         sent++;
       } else {
-        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first) }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
+        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer) }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
       }
       const next = step + 1;
       const nextAt = next < SEQUENCE.length ? new Date(Date.now() + (SEQUENCE[next].day - SEQUENCE[step].day) * 86400e3) : null;
@@ -181,7 +197,7 @@ export async function checkReply(sequenceId: string) {
   if (!seq || seq.status !== "active" || !seq.contactId) return false;
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
   if (!c.email) return false;
-  const mb = await sendingMailbox(seq.accountId);
+  const mb = await sendingMailbox(seq.accountId, seq.mailboxId);
   if (!mb) return false;
   const [opener] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
   const since = opener.sentAt || seq.createdAt;
@@ -213,7 +229,7 @@ export async function sendSuggestedReply(accountId: string, sequenceId: string, 
   const [seq] = await db.select().from(schema.sequences).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
   if (!seq?.contactId) throw new Error("No contact on this sequence.");
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
-  const mb = await sendingMailbox(accountId);
+  const mb = await sendingMailbox(accountId, seq.mailboxId);
   if (!mb || !c.email) throw new Error("No mailbox or email to send with.");
   const [opener] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
   await sendAs(mb.id, { to: c.email, subject: `Re: ${opener.subject}`, text: body, inReplyTo: seq.threadId || undefined, references: seq.threadId || undefined });
@@ -225,8 +241,8 @@ export async function sendSuggestedReply(accountId: string, sequenceId: string, 
 export type Card = {
   facilityId: string; name: string; city: string; rel: Relationship | null; summary: string;
   sequence: (typeof schema.sequences.$inferSelect & { touches: (typeof schema.touches.$inferSelect)[] }) | null;
-  people: Visible[]; best: Visible | null; contact: Visible | null;
-  state: "needs_draft" | "needs_people" | "needs_email" | "ready" | "active" | "copy" | "replied" | "paused" | "done";
+  people: Visible[]; best: Visible | null; contact: Visible | null; hold: DockHold;
+  state: "held" | "needs_draft" | "needs_people" | "needs_email" | "ready" | "active" | "copy" | "replied" | "paused" | "done";
 };
 export async function cards(accountId: string): Promise<Card[]> {
   const db = await getDb();
@@ -246,8 +262,10 @@ export async function cards(accountId: string): Promise<Card[]> {
     const ps = people[fid] || [];
     const contact = s?.contactId ? ps.find((p) => p.id === s.contactId) || null : null;
     const best = contact || bestPerson(ps);
+    const hold = await dockHolds(accountId, fid);
     let state: Card["state"] = "needs_draft";
-    if (s) {
+    if (!hold.clear && (!s || ["draft", "active"].includes(s.status))) state = "held";
+    else if (s) {
       if (s.status === "replied") state = "replied";
       else if (s.status === "paused") state = "paused";
       else if (s.status === "done") state = "done";
@@ -257,8 +275,8 @@ export async function cards(accountId: string): Promise<Card[]> {
       else state = "ready";
     }
     out.push({ facilityId: fid, name: f.name, city: `${f.city}, ${f.state}`, rel, summary: s?.summary || (rel ? relationshipLine(rel) : ""),
-      sequence: s ? { ...s, touches: touchesAll.filter((t) => t.sequenceId === s.id) } : null, people: ps, best, contact, state });
+      sequence: s ? { ...s, touches: touchesAll.filter((t) => t.sequenceId === s.id) } : null, people: ps, best, contact, hold, state });
   }
-  const order: Record<Card["state"], number> = { replied: 0, ready: 1, copy: 2, needs_email: 3, needs_people: 4, needs_draft: 5, active: 6, paused: 7, done: 8 };
+  const order: Record<Card["state"], number> = { replied: 0, ready: 1, copy: 2, needs_email: 3, needs_people: 4, needs_draft: 5, active: 6, paused: 7, held: 8, done: 9 };
   return out.sort((a, b) => order[a.state] - order[b.state] || (b.rel?.warmth ?? 0) - (a.rel?.warmth ?? 0));
 }

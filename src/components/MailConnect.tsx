@@ -7,13 +7,13 @@ import { useFlash } from "./Flash";
    Used on onboarding and again under Sources. */
 export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: string; features: { microsoft: boolean; ai: boolean } } | null; onDone?: () => void; compact?: boolean }) {
   const { flash } = useFlash();
-  const [addr, setAddr] = useState(""); const [pw, setPw] = useState(""); const [busy, setBusy] = useState<string | null>(null);
+  const [addr, setAddr] = useState(""); const [pw, setPw] = useState(""); const [who, setWho] = useState(""); const [busy, setBusy] = useState<string | null>(null);
   const [showFallback, setShowFallback] = useState(false);
 
   async function gmail(e: React.FormEvent) {
     e.preventDefault(); setBusy("gmail");
     try {
-      const r = await api<{ first: { stored: number; skipped: number; errors: string[] } }>("/api/mail/gmail", { method: "POST", json: { address: addr, appPassword: pw } });
+      const r = await api<{ first: { stored: number; skipped: number; errors: string[] } }>("/api/mail/gmail", { method: "POST", json: { address: addr, appPassword: pw, senderName: who } });
       flash(r.first.errors.length && !r.first.stored
         ? `Connected, but reading failed: ${r.first.errors[0]}`
         : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}. The rest of your history reads in the background, about 360 messages an hour; watch progress under Account → Sources.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
@@ -46,6 +46,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
         <form onSubmit={gmail} className="grid2" style={{ gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
           <div className="formrow"><label htmlFor="g-addr">Gmail address</label><input id="g-addr" type="email" value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="dispatch@yourcompany.com" required /></div>
           <div className="formrow"><label htmlFor="g-pw">App password</label><input id="g-pw" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="xxxx xxxx xxxx xxxx" required /></div>
+          <div className="formrow" style={{ gridColumn: "1 / -1" }}><label htmlFor="g-who">Sign outreach from this mailbox as</label><input id="g-who" type="text" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Justin Ruiz, owner" /><p className="hint">Connect a second mailbox for a dispatcher or salesperson and pick who sends per dock.</p></div>
           <div style={{ gridColumn: "1 / -1" }}><button className="btn btn-lg" disabled={busy === "gmail"}>{busy === "gmail" ? <><span className="spin" />Checking the login and reading your first rate cons…</> : "Connect Gmail"}</button></div>
         </form>
         <p className="hint">Works with Google Workspace too, as long as 2-Step Verification is on. Your first rate cons show within a minute; the full history reads in the background at about 360 messages an hour. Disconnect any time under Account &rarr; Sources, or revoke the app password from the same Google page.</p>

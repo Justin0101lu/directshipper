@@ -8,7 +8,7 @@ import { FlashProvider } from "./Flash";
 export type Me = {
   email: string; company: string; plan: string;
   tokens: { monthly: number; extra: number; total: number; cap: number };
-  mailboxes: { id: string; kind: string; address: string; status: string; error: string | null; lastSyncAt: string | null; historyDone: boolean; queued: number; readCount: number }[];
+  mailboxes: { id: string; kind: string; address: string; senderName: string | null; status: string; error: string | null; lastSyncAt: string | null; historyDone: boolean; queued: number; readCount: number }[];
   forwardAddress: string;
   batchQueue: number;
   features: { microsoft: boolean; providers: string[]; ai: boolean; stripe: boolean };

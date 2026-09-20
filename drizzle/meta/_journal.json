@@ -43,6 +43,20 @@
       "when": 1789922291716,
       "tag": "0005_tidy_kat_farrell",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789922830324,
+      "tag": "0006_bright_doctor_doom",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789923003980,
+      "tag": "0007_narrow_pride",
+      "breakpoints": true
     }
   ]
 }

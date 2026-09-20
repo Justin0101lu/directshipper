@@ -74,6 +74,18 @@ async function main() {
   }
   console.log(`demo carrier: ${n} loads`);
 
+  /* Agreements on file for six of the eight brokers, shippers-only clauses, so the
+     demo's receivers clear. Two brokers have none, so the broad assumption holds
+     any dock they alone put us at. */
+  for (const [b, mc] of BROKERS) {
+    const broad = false;   // every demo clause names shippers only; pickup docks stay held, receivers clear
+    await db.insert(schema.agreements).values({
+      accountId: acct.id, broker: b, brokerMc: mc, termMonths: broad ? 18 : 12, fromEvent: "last_shipment", survives: true, coversConsignees: broad, coversAllLocations: false,
+      damages: "15% of gross revenue on solicited freight", page: "page 3, section 8", filename: `${b.replace(/\s+/g, "-")}-agreement.pdf`,
+      clause: `Carrier shall not, for twelve (12) months following the last shipment tendered hereunder, solicit or accept freight from any shipper customer of Broker that was first introduced to Carrier by Broker. This obligation survives termination.`,
+    });
+  }
+
   /* Network carriers: their loads originate at the demo carrier's receivers, so outbound observations exist. */
   const ORIGINS = DESTS.filter((d) => d.city !== "Las Vegas");
   const NET_DESTS = [{ facility: "Ontario Cold Dock", street: "3000 E Guasti Rd", city: "Ontario", state: "CA", miles: 390 }, { facility: "Corona Produce Terminal", street: "1200 Magnolia Ave", city: "Corona", state: "CA", miles: 395 }, { facility: "LA Cold Storage", street: "3300 E Vernon Ave", city: "Vernon", state: "CA", miles: 420 }, { facility: "Tucson Foods DC", street: "4400 E Valencia Rd", city: "Tucson", state: "AZ", miles: 115 }, { facility: "Houston Grocers", street: "5900 Clinton Dr", city: "Houston", state: "TX", miles: 240 }];

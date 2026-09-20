@@ -36,6 +36,7 @@ export const mailboxes = pgTable("mailboxes", {
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   kind: text("kind").notNull(),                 // gmail_imap | microsoft | forward | upload
   address: text("address").notNull(),
+  senderName: text("sender_name"),              // how outreach from this mailbox is signed, e.g. "Justin Ruiz, owner"
   secret: text("secret"),                       // encrypted: app password, or OAuth refresh token
   lastUid: integer("last_uid").notNull().default(0),
   queued: integer("queued").notNull().default(0),        // messages still to read after the last pass
@@ -132,6 +133,25 @@ export const stops = pgTable("stops", {
   at: timestamp("at", { withTimezone: true }),
 }, (t) => [index("stops_account_idx").on(t.accountId), index("stops_facility_idx").on(t.facilityId)]);
 
+/* Broker-carrier agreements the carrier uploaded, read into the fields
+   that decide a hold. Never a legal opinion: the clause is shown as written. */
+export const agreements = pgTable("agreements", {
+  id: id(),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  broker: text("broker").notNull(),             // as named in the document
+  brokerMc: text("broker_mc"),
+  termMonths: integer("term_months"),           // null: not stated
+  fromEvent: text("from_event"),                // last_shipment | termination | signing | unknown
+  survives: boolean("survives"),
+  coversConsignees: boolean("covers_consignees"),
+  coversAllLocations: boolean("covers_all_locations"),
+  damages: text("damages"),                     // liquidated damages as written
+  clause: text("clause").notNull(),             // verbatim
+  page: text("page"),
+  filename: text("filename"),
+  createdAt: now(),
+}, (t) => [index("agreements_account_idx").on(t.accountId)]);
+
 /* ---------- prospects & contacts ---------- */
 export const prospects = pgTable("prospects", {
   id: id(),
@@ -174,7 +194,8 @@ export const sequences = pgTable("sequences", {
   contactId: text("contact_id").references(() => contacts.id, { onDelete: "set null" }),   // attached once a person is chosen
   facilityId: text("facility_id").notNull().references(() => facilities.id),
   status: text("status").notNull().default("draft"),   // draft | active | replied | paused | done
-  summary: text("summary"),                            // the relationship line the drafts rest on
+  summary: text("summary"),
+  mailboxId: text("mailbox_id").references(() => mailboxes.id, { onDelete: "set null" }),   // who sends; default: the account's first sending mailbox                            // the relationship line the drafts rest on
   step: integer("step").notNull().default(0),
   nextAt: timestamp("next_at", { withTimezone: true }),
   threadId: text("thread_id"),                  // first Message-ID, for reply matching

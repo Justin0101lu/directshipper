@@ -39,7 +39,7 @@ export async function draftSequence(ctx: DraftContext) {
   const res = await claude().messages.parse({
     model: MODEL,
     max_tokens: 6000,
-    system: `You write outreach for ${ctx.carrier}, a trucking company, to a shipper's transportation contact. Plain, short, specific, no marketing words, no exclamation marks, no flattery. Every touch stands alone and rests only on the facts below; a reader should feel this was written for their dock and nobody else's. Emails: 60-120 words, subject under 60 characters, no subject line inside the body. LinkedIn: under 280 characters, no subject. Address the person as ${who}${ctx.contactFirst ? "" : " (a placeholder that is replaced with their first name; write it exactly as {{first}})"}. Signed "${ctx.signer}". Steps, in order:
+    system: `You write outreach for ${ctx.carrier}, a trucking company, to a shipper's transportation contact. Plain, short, specific, no marketing words, no exclamation marks, no flattery. Every touch stands alone and rests only on the facts below; a reader should feel this was written for their dock and nobody else's. Emails: 60-120 words, subject under 60 characters, no subject line inside the body. LinkedIn: under 280 characters, no subject. Address the person as ${who}${ctx.contactFirst ? "" : " (a placeholder that is replaced with their first name; write it exactly as {{first}})"}. Sign every email exactly with the placeholder {{signer}} on its own last line (it is replaced with the sender's name and title when sent). Steps, in order:
 ${SEQUENCE.map((s, i) => `${i}. ${s.name} (${s.channel}, day ${s.day})`).join("\n")}
 Facts:
 - Dock: ${ctx.facility}, ${ctx.city}
@@ -58,4 +58,4 @@ Never invent volumes, rates, names, or dates. If a fact is unknown, write around
 }
 
 /* Fill the placeholder at send time. */
-export const personalize = (text: string, first: string | null) => text.replace(/\{\{first\}\}/g, first || "there");
+export const personalize = (text: string, first: string | null, signer?: string | null) => text.replace(/\{\{first\}\}/g, first || "there").replace(/\{\{signer\}\}/g, signer || "");

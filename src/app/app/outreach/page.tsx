@@ -7,14 +7,15 @@ import { useMe } from "@/components/AppShell";
 
 type Person = { id: string; title: string | null; name: string | null; email: string | null; emailStatus: string | null; phone: string | null; linkedin: string | null; has: Record<string, boolean> };
 type Touch = { id: string; step: number; channel: string; subject: string | null; body: string; status: string; sentAt: string | null };
-type Seq = { id: string; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null; contactId: string | null; touches: Touch[] };
+type Seq = { id: string; mailboxId: string | null; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null; contactId: string | null; touches: Touch[] };
 type Rel = { deliveries: number; pickups: number; lastAt: string | null; daysSinceLast: number | null; perMonth: number; weekday: string | null; brokers: number; kind: string; warmth: number };
-type Card = { facilityId: string; name: string; city: string; rel: Rel | null; summary: string; sequence: Seq | null; people: Person[]; best: Person | null; contact: Person | null; state: string };
+type Hold = { broker: string; lastLoad: string; until: string; expired: boolean; source: string; coversConsignees: boolean; termMonths: number | null; clause?: string };
+type Card = { facilityId: string; name: string; city: string; rel: Rel | null; summary: string; sequence: Seq | null; people: Person[]; best: Person | null; contact: Person | null; hold: { clear: boolean; holds: Hold[]; reason: string }; state: string };
 type Data = { cards: Card[]; sequence: { day: number; channel: string; name: string; approve: boolean }[] };
 
 const LABEL: Record<string, [string, string]> = { interested: ["INTERESTED", "t-ver"], send_paperwork: ["SEND PAPERWORK", "t-ver"], not_now: ["NOT NOW", "t-inf"], wrong_person: ["WRONG PERSON", "t-inf"], unsubscribe: ["UNSUBSCRIBE", "t-flag"], unclear: ["REPLIED", "t-obs"] };
-const STATE: Record<string, [string, string]> = { replied: ["REPLIED", "t-ver"], ready: ["READY TO SEND", "t-ver"], copy: ["PASTE TO LINKEDIN", "t-obs"], needs_email: ["NEEDS AN EMAIL", "t-obs"], needs_people: ["NEEDS A CONTACT", "t-obs"], needs_draft: ["NOT DRAFTED YET", "t-inf"], active: ["RUNNING", "t-ver"], paused: ["PAUSED", "t-inf"], done: ["DONE", "t-inf"] };
-const FILTERS = [["all", "All"], ["todo", "Needs you"], ["active", "Running"], ["replied", "Replied"], ["done", "Done"]] as const;
+const STATE: Record<string, [string, string]> = { held: ["ON HOLD", "t-flag"], replied: ["REPLIED", "t-ver"], ready: ["READY TO SEND", "t-ver"], copy: ["PASTE TO LINKEDIN", "t-obs"], needs_email: ["NEEDS AN EMAIL", "t-obs"], needs_people: ["NEEDS A CONTACT", "t-obs"], needs_draft: ["NOT DRAFTED YET", "t-inf"], active: ["RUNNING", "t-ver"], paused: ["PAUSED", "t-inf"], done: ["DONE", "t-inf"] };
+const FILTERS = [["all", "All"], ["todo", "Needs you"], ["active", "Running"], ["replied", "Replied"], ["held", "On hold"], ["done", "Done"]] as const;
 
 export default function Outreach() {
   const { me, refresh } = useMe(); const { flash } = useFlash(); const r = useRouter();
@@ -44,15 +45,18 @@ export default function Outreach() {
   const approve = (c: Card) => run(`send:${c.facilityId}`, () => api("/api/outreach/approve", { method: "POST", json: { sequenceId: c.sequence!.id, subject: edit?.subject, body: edit?.body } }), "Sent as you. Follow-ups are scheduled and stop the moment they reply.");
   const sendReply = (c: Card) => run(`reply:${c.facilityId}`, () => api("/api/outreach/reply", { method: "POST", json: { sequenceId: c.sequence!.id, body: edit?.body ?? c.sequence!.suggested } }), "Reply sent as you.");
   const copied = (t: Touch) => run(`copy:${t.id}`, async () => { navigator.clipboard?.writeText(t.body); await api("/api/outreach/copied", { method: "POST", json: { touchId: t.id } }); }, "Copied. Paste it into LinkedIn; the step is marked done.");
+  const setSender = (c: Card, mailboxId: string) => run(`sender:${c.facilityId}`, () => api("/api/outreach/sender", { method: "POST", json: { sequenceId: c.sequence!.id, mailboxId } }), "Sender set.");
+  const senders = (me?.mailboxes || []).filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft");
   const pause = (c: Card, on: boolean) => run(`pause:${c.facilityId}`, () => api("/api/outreach/pause", { method: "POST", json: { sequenceId: c.sequence!.id, on } }), on ? "Paused." : "Resumed.");
 
-  const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "paused"].includes(c.state) : c.state === filter);
-  const counts = (k: string) => (d?.cards || []).filter((c) => k === "all" ? c.state !== "done" : k === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : k === "active" ? ["active", "paused"].includes(c.state) : c.state === k).length;
+  const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "held" ? c.state === "held" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "paused"].includes(c.state) : c.state === filter);
+  const counts = (k: string) => (d?.cards || []).filter((c) => k === "all" ? c.state !== "done" : k === "held" ? c.state === "held" : k === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : k === "active" ? ["active", "paused"].includes(c.state) : c.state === k).length;
 
   /* The one button each card needs next. */
   function primary(c: Card) {
     const p = c.contact || c.best;
     switch (c.state) {
+      case "held": return <a className="btn-ghost" href="/app/sources#agreements">Upload the agreement</a>;
       case "needs_draft": return <button className="btn" disabled={busy === `prep:${c.facilityId}` || !me?.features.ai} onClick={() => prepare(c)}>{busy === `prep:${c.facilityId}` ? <><span className="spin" />Writing…</> : "Write the sequence · free"}</button>;
       case "needs_people": return <button className="btn" disabled={busy === `disc:${c.facilityId}` || !me?.features.providers.includes("peopledatalabs")} onClick={() => discover(c)} title={me?.features.providers.includes("peopledatalabs") ? "" : "Needs a People Data Labs key"}>{busy === `disc:${c.facilityId}` ? <><span className="spin" />Looking…</> : "Find contacts · free"}</button>;
       case "needs_email": return p ? <button className="btn" disabled={busy === `email:${p.id}`} onClick={() => revealEmail(c, p)}>{busy === `email:${p.id}` ? <><span className="spin" />Finding…</> : `Get ${p.name ? p.name.split(" ")[0] + "'s" : "the " + (p.title || "contact") + "'s"} email · ${p.name ? "1" : "2"} tokens`}</button> : null;
@@ -69,7 +73,8 @@ export default function Outreach() {
     const s = c.sequence; if (!s) return null;
     const touch = s.touches.find((t) => t.step === step) || s.touches[0];
     const first = c.contact?.name?.split(" ")[0] || "{{first}}";
-    const show = (t: string) => t.replace(/\{\{first\}\}/g, first);
+    const sender = senders.find((m) => m.id === (s.mailboxId || senders[0]?.id));
+    const show = (t: string) => t.replace(/\{\{first\}\}/g, first).replace(/\{\{signer\}\}/g, sender?.senderName || me?.company || "");
     return (
       <div className="seq-panel">
         {s.replyText && <div className="msg them"><span className="msg-w">{(c.contact?.name || "Them").split(" ")[0]} · Email · {s.replyAt ? new Date(s.replyAt).toLocaleDateString() : ""}</span>{s.replyText}</div>}
@@ -87,6 +92,7 @@ export default function Outreach() {
               {touch.channel === "linkedin" && touch.status !== "sent" ? <button className="btn-ghost" onClick={() => copied(touch)}>Copy note</button> : null}
               {touch.step === 0 && s.status === "draft" ? <button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: show(touch.subject || ""), body: show(touch.body) })}>{edit ? "Cancel edit" : "Edit opener"}</button> : null}
               {!c.contact && <span className="hint" style={{ margin: 0 }}>Written to the transportation contact; the first name fills in when you pick a person.</span>}
+              {senders.length > 1 && s.status === "draft" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>Send from <select value={s.mailboxId || senders[0].id} onChange={(e) => setSender(c, e.target.value)} style={{ width: "auto", padding: "5px 8px", fontSize: 13 }}>{senders.map((m) => <option key={m.id} value={m.id}>{m.senderName ? `${m.senderName} · ${m.address}` : m.address}</option>)}</select></label>}
             </div>
           </>)}
         </>)}
@@ -99,7 +105,7 @@ export default function Outreach() {
 
   return (
     <>
-      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.length} docks from your own rate cons, warmest first. Each sequence is written from your history with that dock.` : "Loading…"}</p></div>
+      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.filter((c) => c.hold.clear).length} of ${d.cards.length} docks have no hold on file. Sequences are written from your history with each dock; held docks are never touched.` : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
       {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting, finding contacts and reading replies are free. Sends are unlimited on both paid plans.</p></div>}
       <div className="chips">{FILTERS.map(([k, label]) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}<i>{counts(k)}</i></button>)}</div>
@@ -111,13 +117,18 @@ export default function Outreach() {
             <div className="ocard-h" onClick={() => { setOpen(isOpen ? null : c.facilityId); setStep(c.sequence?.status === "draft" ? 0 : Math.min(c.sequence?.step ?? 0, 6)); setEdit(null); }}>
               <div className="ocard-t"><i>{isOpen ? "▾" : "▸"}</i><b>{c.name}</b><span className="small">{c.city}</span> <span className={`tag ${sc}`}>{sl}</span>{c.state === "replied" && c.sequence?.replyLabel && (() => { const [l, cl] = LABEL[c.sequence.replyLabel] || LABEL.unclear; return <span className={`tag ${cl}`} style={{ marginLeft: 4 }}>{l}</span>; })()}</div>
               <div className="ocard-sum">{c.summary}</div>
+              <div className={`small${c.hold.clear ? "" : " hold-line"}`}>{c.hold.reason}</div>
               <div className="ocard-meta small">
                 {p ? <>{p.name || "Contact"}{p.title ? `, ${p.title}` : ""}{p.email ? ` · ${p.email}` : ""}</> : c.people.length ? `${c.people.length} people in freight roles` : "nobody looked up yet"}
                 {c.sequence?.status === "active" && c.sequence.nextAt ? ` · next touch ${new Date(c.sequence.nextAt).toLocaleDateString()}` : ""}
               </div>
             </div>
             <div className="ocard-a" onClick={(e) => e.stopPropagation()}>{primary(c)}</div>
-            {isOpen && (c.sequence ? seqPanel(c) : <div className="seq-panel"><p className="hint" style={{ margin: 0 }}>No sequence written yet for this dock. Writing one is free and takes a few seconds.</p></div>)}
+            {isOpen && c.state === "held" && <div className="seq-panel">
+              <p className="hint" style={{ marginTop: 0 }}>Nothing is drafted or sent for a dock on hold. Each broker below put you at this dock; the hold runs from your last load with them. Upload a broker&rsquo;s signed agreement and the app uses the clause as written instead of the 24-month assumption. Read it with your attorney; the app shows dates and documents, not a verdict.</p>
+              {c.hold.holds.map((h) => <div key={h.broker} className={`hold-row${h.expired ? " expired" : ""}`}><b>{h.broker}</b><span className="small"> · last load {h.lastLoad} · {h.expired ? "term ran out" : "held until"} {h.until} · {h.source === "agreement" ? `${h.termMonths ?? "?"} months per the agreement${h.coversConsignees ? ", consignees included" : ", shippers only"}` : "assumed 24 months, consignees included"}</span>{h.clause && <blockquote className="clause-q">{h.clause}</blockquote>}</div>)}
+            </div>}
+            {isOpen && c.state !== "held" && (c.sequence ? seqPanel(c) : <div className="seq-panel"><p className="hint" style={{ margin: 0 }}>No sequence written yet for this dock. Writing one is free and takes a few seconds.</p></div>)}
           </div>
         );
       })}
