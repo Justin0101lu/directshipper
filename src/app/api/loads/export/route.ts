@@ -6,7 +6,7 @@ import { PLANS, type PlanId } from "@/lib/plans";
 export const GET = withSession(async (_req, s) => {
   const db = await getDb();
   const [a] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, s.aid));
-  if (!PLANS[a.plan as PlanId].export) return fail("Export is on Carrier and Fleet.", 402);
+  if (!PLANS[a.plan as PlanId].export) return fail("Export is on Carrier and up.", 402);
   const rows = await recentLoads(s.aid, 100000);
   const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const head = ["pickup", "load_number", "broker", "broker_mc", "shipper", "origin_city", "origin_state", "dest_city", "dest_state", "commodity", "family", "equipment", "miles", "rate", "per_mile"];

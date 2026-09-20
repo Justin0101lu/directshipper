@@ -20,7 +20,7 @@ With no `DATABASE_URL` the app runs on an embedded Postgres (PGlite) under `.dat
 
 1. **Database.** Create a free Postgres on Neon or Supabase. Copy the connection string into `DATABASE_URL`. Migrations run on first request.
 2. **Anthropic.** `ANTHROPIC_API_KEY` from console.anthropic.com. Two models: `PARSE_MODEL` (default `claude-haiku-4-5`) reads rate cons as extracted text at about a fifth of a cent each, so a 2,000-load inbox is roughly $4; `CLAUDE_MODEL` (default `claude-opus-5`) does the low-volume work: drafting, reply triage, the question box. Only a scanned PDF with no text layer is sent as an image.
-3. **Stripe.** Create two recurring prices, $39/mo and $149/mo. Put their ids in `STRIPE_PRICE_CARRIER` and `STRIPE_PRICE_FLEET`. Add a webhook to `https://<your domain>/api/stripe/webhook` for `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`; put its secret in `STRIPE_WEBHOOK_SECRET`.
+3. **Stripe.** Create three recurring prices, $99/mo, $299/mo and $799/mo. Put their ids in `STRIPE_PRICE_CARRIER`, `STRIPE_PRICE_FLEET` and `STRIPE_PRICE_ENTERPRISE` (leave Enterprise blank to show "Talk to us" instead). Add a webhook to `https://<your domain>/api/stripe/webhook` for `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`; put its secret in `STRIPE_WEBHOOK_SECRET`.
 4. **Contacts.** Any of `FINDYMAIL_API_KEY`, `PEOPLEDATALABS_API_KEY`, `LEADMAGIC_API_KEY`, `PROSPEO_API_KEY`, `WIZA_API_KEY`. People Data Labs is the one that finds *who* the transportation contact is; the others find emails and phones. Start with Findymail plus People Data Labs.
 5. **Forwarding address.** Point a Postmark inbound stream (or any provider posting Postmark-shaped JSON) at `https://<your domain>/api/inbound/<INBOUND_SECRET>` and set `INBOUND_DOMAIN` to the domain you receive on. Each account gets `loads-<token>@<INBOUND_DOMAIN>`.
 6. **Outlook (optional).** Register an app in Entra, redirect URI `https://<your domain>/api/mail/microsoft/callback`, delegated permissions `Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`. Set `MS_CLIENT_ID` / `MS_CLIENT_SECRET`. Leave empty and the Outlook button is hidden.
@@ -47,7 +47,7 @@ Outlook removed password sign-in for IMAP, so Outlook uses Microsoft's OAuth, wh
 
 ## Tokens and plans
 
-Free: 20 to start, 10 a month. Carrier $39: 100 a month, outreach sends, export, extra tokens 50c. Fleet $149: 500 a month, extra 40c. Everything about the carrier's own freight is free. Monthly tokens are spent before purchased ones. A daily cap (default 25) stops runaway searches. All of it lives in `src/lib/tokens.ts` and `src/lib/plans.ts`.
+A flat fee with tokens included, then packs at the plan's rate. Free: 10 welcome tokens, no monthly bundle, packs at 50c. Carrier $99: 200 included, packs at 40c, autopilot may send, 1 sending inbox, 3 new shippers a day. Fleet $299: 600 included, 30c, 5 inboxes, 10 a day. Enterprise from $799: 2,000 included, 25c. Included tokens are spent first and reset on the billing date (a reset, not a top-up); purchased tokens never expire. A refund goes back to the pool it came from. Every ledger row carries its dollar value. Auto top-up (opt in) buys the 50-token pack on the saved card when the balance drops under 10, at most once a day. Who someone is (name, title, LinkedIn) is 1 token, an email 1, a phone 3, a lookalike 1. All of it lives in `src/lib/tokens.ts`, `src/lib/stripe.ts` and `src/lib/plans.ts`.
 
 ## Commands
 

@@ -11,10 +11,11 @@ export const accounts = pgTable("accounts", {
   id: id(),
   company: text("company").notNull(),
   mc: text("mc"),
-  plan: text("plan").notNull().default("free"),            // free | carrier | fleet
-  tokensMonthly: integer("tokens_monthly").notNull().default(20),
-  tokensExtra: integer("tokens_extra").notNull().default(0),
+  plan: text("plan").notNull().default("free"),            // free | carrier | fleet | enterprise
+  tokensMonthly: integer("tokens_monthly").notNull().default(0),   // included in the plan; reset on the billing date
+  tokensExtra: integer("tokens_extra").notNull().default(0),      // bought in packs; never expire
   dailyCap: integer("daily_cap").notNull().default(25),
+  autoTopup: boolean("auto_topup").notNull().default(false),     // buy a pack on the saved card when the balance runs low
   autopilot: text("autopilot").notNull().default("draft"),   // off | draft | send
   autoPerDay: integer("auto_per_day").notNull().default(3),  // new docks the agent may start per day in send mode
   stripeCustomerId: text("stripe_customer_id"),
@@ -241,6 +242,8 @@ export const ledger = pgTable("ledger", {
   id: id(),
   accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   delta: integer("delta").notNull(),
+  extra: integer("extra").notNull().default(0),   // how many of these tokens came from (or went back to) the purchased pool
+  cents: integer("cents").notNull().default(0),   // dollar value of the entry, signed like delta; purchases carry what was paid
   what: text("what").notNull(),
   ref: text("ref"),
   createdAt: now(),

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { REVEAL_COST as COST } from "@/lib/plans";
 import { api, tok } from "@/components/api";
 import { useFlash } from "@/components/Flash";
 import { useMe } from "@/components/AppShell";
@@ -96,7 +97,7 @@ export default function Prospects() {
                   {FIELDS.map(([k, label]) => {
                     const v = p[k]; const key = `${p.id}:${k}`;
                     if (v) return <span key={k} className="pf">{k === "linkedin" ? <a className="lnk" href={v} target="_blank" rel="noreferrer">LinkedIn</a> : k === "email" && p.emailStatus === "bounced" ? <s>{v}</s> : v}</span>;
-                    return <button key={k} className="btn-ghost pf-btn" disabled={busy === key || (k !== "name" && !p.name)} onClick={() => reveal(p.id, k)} title={p.has[k] ? "On file, 1 token to see" : "Will be looked up, 1 token if found"}>{busy === key ? "…" : `${label} · 1`}</button>;
+                    return <button key={k} className="btn-ghost pf-btn" disabled={busy === key || (k !== "name" && !p.name)} onClick={() => reveal(p.id, k)} title={COST[k] === 0 ? "Included with the name" : p.has[k] ? `On file, ${tok(COST[k])} to see` : `Will be looked up, ${tok(COST[k])} if found`}>{busy === key ? "…" : COST[k] === 0 ? `${label} · free` : `${label} · ${COST[k]}`}</button>;
                   })}
                   {p.email && p.emailStatus !== "bounced" && <button className="btn pf-btn" disabled={busy === `seq:${p.id}`} onClick={() => startOutreach(p.id)}>{busy === `seq:${p.id}` ? "Drafting…" : "Add to outreach"}</button>}
                   {p.email && p.emailStatus !== "bounced" && <a href="#" className="small lnk" onClick={async (e) => { e.preventDefault(); await api("/api/contacts/bounce", { method: "POST", json: { contactId: p.id } }); flash("Marked bounced and refunded."); load(); refresh(); }}>bounced?</a>}

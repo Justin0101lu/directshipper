@@ -4,12 +4,14 @@ import { getSession } from "@/lib/auth";
 import { seal } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { msExchangeCode, msMe, syncGraphMailbox } from "@/lib/mail/graph";
+import { inboxRoom } from "@/lib/mail/limits";
 export async function GET(req: Request) {
   const s = await getSession();
   const u = new URL(req.url);
   const code = u.searchParams.get("code");
   if (!s || !code || u.searchParams.get("state") !== s.aid) return NextResponse.redirect(`${env.appUrl}/onboard?err=microsoft`);
   try {
+    { const room = await inboxRoom(s.aid); if (!room.ok) return NextResponse.redirect(`${env.appUrl}/app/settings/sources?err=inboxes`); }
     const t = await msExchangeCode(code);
     const address = await msMe(t.access_token);
     const db = await getDb();

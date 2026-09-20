@@ -130,7 +130,7 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   const [seq] = await db.select().from(schema.sequences).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
   if (!seq) throw new Error("No sequence");
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
-  if (!PLANS[acct.plan as PlanId].outreach) throw new Error("Sending is on Carrier and Fleet. Drafting stays free.");
+  if (!PLANS[acct.plan as PlanId].outreach) throw new Error("Sending is on Carrier and up. Drafting stays free.");
   if (!seq.contactId) throw new Error("Pick a person at this dock first.");
   const hold = await dockHolds(accountId, seq.facilityId);
   if (!hold.clear) throw new Error(hold.reason);
@@ -306,7 +306,7 @@ export async function autopilotTick(accountId: string) {
   const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
   const [today] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches).innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
     .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.step, 0), eq(schema.touches.status, "sent"), sql`${schema.touches.sentAt} >= ${dayStart}`));
-  let budget = acct.autoPerDay - Number(today?.n || 0);
+  let budget = Math.min(acct.autoPerDay, PLANS[acct.plan as PlanId].perDay) - Number(today?.n || 0);
   if (budget <= 0) return { started: 0, reason: "daily limit" };
   const { discover, reveal, visibleContacts } = await import("@/lib/enrich");
   const docks = (await rankedDocks(accountId, 25)).filter((d) => d.deliveries >= 3);

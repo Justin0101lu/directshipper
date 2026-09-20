@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PLANS, TOKEN_ITEMS, WELCOME_TOKENS } from "@/lib/plans";
 export default function Landing() {
   return (
     <div className="view on">
@@ -35,8 +36,8 @@ export default function Landing() {
           {[
             ["01", "Find out what your freight is really worth", "Your whole history read back to you: commodity mix, length of haul, rate per mile by lane. Most carriers discover their busiest lane is their worst paying one.", "FREE", "Unlimited"],
             ["02", "Take the docks you already back into", "You are on their property every week and no broker put you there. Most of them ship outbound too, and that freight is theirs to award.", "FREE", "Contacts cost tokens"],
-            ["03", "Win the freight you already know how to haul", "Facilities moving the same commodity on the same lanes you run well, with no broker in between. Your own history does the targeting.", "1 token", "per shipper"],
-            ["04", "Work them until they answer", "Seven touches over 30 days, each one written from your own freight history. You approve the opener, the follow-ups send themselves from your domain, and it all stops the second they reply.", "FREE", "Unlimited sends"],
+            ["03", "Win the freight you already know how to haul", "Facilities moving the same commodity on the same lanes you run well, with no broker in between. Your own history does the targeting.", "1 token", "per new shipper"],
+            ["04", "Let the agent work them until they answer", "Seven touches over 30 days, each one written from your own freight history and signed by you, from the company you choose. On Send, the agent starts new shippers every day on its own, never one you are under a hold on, and stops the second they reply.", "FREE", "Sends included on paid plans"],
             ["05", "Ask your freight a question", "“Who did I haul frozen for out of Ontario last winter?” Answered from your own rate cons, with the source on every answer.", "FREE", "Unlimited"],
           ].map(([n, h, p, c, s]) => (
             <div className="play" key={n}>
@@ -70,20 +71,39 @@ export default function Landing() {
       </div></div>
 
       <div className="sect" id="pricing"><div className="wrap">
-        <h2>One token, one answer.</h2>
-        <p className="sub">A token buys one thing Direct Shipper had to go out and find: a shipper, a name, an email, a phone number. Nothing else costs tokens, and you are never charged when we come back empty-handed.</p>
+        <h2>A flat fee, tokens included.</h2>
+        <p className="sub">Reading your own freight is free, and stays free. A paid plan turns the sales agent on and includes a monthly bundle of tokens. A token buys one thing Direct Shipper had to go out and find: who someone is, their email, their phone, a new shipper. Never charged when we come back empty-handed. Need more? Packs at your plan&rsquo;s rate, and they never expire.</p>
         <div className="plans">
-          <div className="plan"><div className="nm">Free</div><div className="pr">$0</div><div className="who">Free forever, not a trial</div>
-            <div className="cta"><Link className="btn-ghost" href="/signup">Get started free</Link></div>
-            <ul><li><b>Inbox connect</b> &mdash; full history scan</li><li>Unlimited rate con parsing</li><li>Your full freight profile</li><li>Receivers you already deliver to</li><li><b>20 tokens</b> to start, then 10 a month</li><li className="off">No extra tokens</li><li className="off">No export or outreach sends</li></ul></div>
-          <div className="plan rec"><div className="rectag">MOST CARRIERS</div><div className="nm">Carrier</div><div className="pr">$39<i>/mo</i></div><div className="who">Owner-operators and small fleets</div>
-            <div className="cta"><Link className="btn" href="/signup?plan=carrier">Get started</Link></div>
-            <ul><li><b>100 tokens</b> a month</li><li><b>Outreach</b> &mdash; email sequences on autopilot</li><li>Export to CSV</li><li>Everything in Free, unlimited</li><li>Unlimited users</li><li>Extra tokens <b>50&cent;</b> each</li></ul></div>
-          <div className="plan"><div className="nm">Fleet</div><div className="pr">$149<i>/mo</i></div><div className="who">Fleets with someone selling</div>
-            <div className="cta"><Link className="btn-ghost" href="/signup?plan=fleet">Get started</Link></div>
-            <ul><li><b>500 tokens</b> a month</li><li>Everything in Carrier</li><li><b>Load history import</b> &mdash; CSV &amp; scheduled report</li><li>Unlimited users</li><li>Extra tokens <b>40&cent;</b> each</li></ul></div>
+          {([
+            ["free", "Get started free", "/signup", false],
+            ["carrier", "Start on Carrier", "/signup?plan=carrier", true],
+            ["fleet", "Start on Fleet", "/signup?plan=fleet", false],
+            ["enterprise", "Start on Enterprise", "/signup?plan=enterprise", false],
+          ] as const).map(([id, cta, href, rec]) => { const p = PLANS[id]; return (
+            <div className={`plan${rec ? " rec" : ""}`} key={id}>{rec && <div className="rectag">MOST CARRIERS</div>}
+              <div className="nm">{p.name}</div><div className="pr">{id === "enterprise" ? <><i>from </i>${p.price}</> : `$${p.price}`}{p.price ? <i>/mo</i> : null}</div>
+              <div className="inc">{p.monthly ? `${p.monthly.toLocaleString()} tokens included` : `${WELCOME_TOKENS} tokens to start`}</div><div className="who">{p.who}</div>
+              <div className="cta"><Link className={rec ? "btn" : "btn-ghost"} href={href}>{cta}</Link></div>
+              <ul>{p.perks.map((t) => <li key={t}>{t}</li>)}{p.off.map((t) => <li key={t} className="off">{t}</li>)}<li>Extra tokens <b>{Math.round(p.extra * 100)}&cent;</b> each</li></ul>
+            </div>); })}
         </div>
-        <p className="hero-note">Connecting your inbox is free on every plan. Monthly tokens roll over for 12 months, extra tokens never expire. Cancel any month.</p>
+        <div className="fall" style={{ marginTop: 28 }}>
+          <div className="fallcard">
+            <h4>What a token buys <span>only data, never AI</span></h4>
+            <ol>{TOKEN_ITEMS.map((t) => <li key={t.what}><b>{t.cost ? `${t.cost} token${t.cost === 1 ? "" : "s"}` : "0 tokens"}</b> &mdash; {t.what}{t.note ? `, ${t.note}` : ""}</li>)}</ol>
+            <p className="fallnote">Reading rate cons, writing sequences, every email sent, and asking your freight a question never cost a token, on any plan.</p>
+          </div>
+          <div className="fallcard">
+            <h4>How the bundle works <span>like a phone plan</span></h4>
+            <ol>
+              <li><b>Included tokens</b> are spent first and reset on your billing date</li>
+              <li><b>Packs</b> of 50, 200 or 1,000 at your plan&rsquo;s rate, charged once, never expire</li>
+              <li><b>Auto top-up</b>, if you switch it on, buys a 50-token pack when you run low so the agent never stops on a weekend</li>
+            </ol>
+            <p className="fallnote">Each plan&rsquo;s bundle covers its autopilot for the month. Most carriers never buy a pack.</p>
+          </div>
+        </div>
+        <p className="hero-note">Connecting your inbox is free on every plan. Cancel any month; purchased tokens stay yours.</p>
       </div></div>
 
       <div className="cta-end"><div className="wrap">

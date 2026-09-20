@@ -113,7 +113,7 @@ export default function Outreach() {
           <div><b>Autopilot</b><span className="small"> · {me.autopilot === "send" ? `reaching out to up to ${me.autoPerDay} new shippers a day, inside your ${me.tokens.cap || "unlimited"}-token daily cap, never one on hold` : me.autopilot === "draft" ? "writing sequences for your warmest docks; you approve every opener" : "off; nothing is drafted or sent on its own"}</span></div>
           <div className="auto-ctl">
             {(["off", "draft", "send"] as const).map((k) => <button key={k} className={`chip${me.autopilot === k ? " on" : ""}`} disabled={busy === "auto" || (k === "send" && (!canSend || !hasMailbox))} title={k === "send" && !canSend ? "Sending needs Carrier or Fleet" : k === "send" && !hasMailbox ? "Connect a sending mailbox first" : ""} onClick={() => setAuto(k)}>{k === "off" ? "Off" : k === "draft" ? "Draft only" : "Send"}</button>)}
-            {me.autopilot === "send" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>shippers a day <input type="number" min={0} max={50} defaultValue={me.autoPerDay} onBlur={(e) => Number(e.target.value) !== me.autoPerDay && setAuto("send", Number(e.target.value))} style={{ width: 64, padding: "5px 8px", fontSize: 13 }} /></label>}
+            {me.autopilot === "send" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>shippers a day <input type="number" min={0} max={me.limits.perDay || 50} defaultValue={me.autoPerDay} onBlur={(e) => Number(e.target.value) !== me.autoPerDay && setAuto("send", Number(e.target.value))} style={{ width: 64, padding: "5px 8px", fontSize: 13 }} /></label>}
           </div>
         </div>
       )}

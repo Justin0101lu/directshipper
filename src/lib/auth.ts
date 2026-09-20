@@ -3,6 +3,8 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { grantExtra } from "./tokens";
+import { WELCOME_TOKENS } from "./plans";
 import { env } from "./env";
 
 const COOKIE = "ds_session";
@@ -41,7 +43,7 @@ export async function signup(company: string, email: string, password: string, m
   if (existing.length) throw new Error("An account with that email already exists. Sign in instead.");
   const [acct] = await db.insert(schema.accounts).values({ company: company.trim(), mc: mc?.trim() || null }).returning();
   const [user] = await db.insert(schema.users).values({ accountId: acct.id, email, passwordHash: await bcrypt.hash(password, 10) }).returning();
-  await db.insert(schema.ledger).values({ accountId: acct.id, delta: 20, what: "Welcome tokens" });
+  await grantExtra(acct.id, WELCOME_TOKENS, `Welcome — ${WELCOME_TOKENS} tokens to start`);
   await createSession({ uid: user.id, aid: acct.id, email });
   return { user, acct };
 }

@@ -48,9 +48,9 @@ async function main() {
   const db = await getDb();
   const [exists] = await db.select().from(schema.users).where(eq(schema.users.email, "demo@directshipper.co"));
   if (exists) { console.log("demo account already exists"); process.exit(0); }
-  const [acct] = await db.insert(schema.accounts).values({ company: "Ruiz Trucking LLC", mc: "884213", plan: "carrier", tokensMonthly: 100 }).returning();
+  const [acct] = await db.insert(schema.accounts).values({ company: "Ruiz Trucking LLC", mc: "884213", plan: "carrier", tokensMonthly: 200 }).returning();
   await db.insert(schema.users).values({ accountId: acct.id, email: "demo@directshipper.co", name: "Justin Ruiz", passwordHash: await bcrypt.hash("demo1234", 10) });
-  await db.insert(schema.ledger).values({ accountId: acct.id, delta: 100, what: "Carrier plan — first month" });
+  await db.insert(schema.ledger).values({ accountId: acct.id, delta: 200, what: "Carrier plan — 200 tokens included" });
   const [mb] = await db.insert(schema.mailboxes).values({ accountId: acct.id, kind: "upload", address: "demo" }).returning();
 
   const bag: number[] = []; PICKUPS.forEach((p, i) => { for (let n = 0; n < p.w; n++) bag.push(i); });

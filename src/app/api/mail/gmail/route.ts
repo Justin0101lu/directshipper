@@ -2,10 +2,12 @@ import { getDb, schema } from "@/db";
 import { body, fail, json, withSession } from "@/lib/api";
 import { seal } from "@/lib/crypto";
 import { syncImapMailbox, testImap } from "@/lib/mail/imap";
+import { inboxRoom } from "@/lib/mail/limits";
 /* Gmail with an App Password: test the login, store it encrypted, read the first batch right away. */
 export const POST = withSession(async (req, s) => {
   const b = await body<{ address: string; appPassword: string; senderName?: string; authorityId?: string }>(req);
   if (!b.address || !b.appPassword) return fail("Enter the Gmail address and the 16-character app password.");
+  { const room = await inboxRoom(s.aid); if (!room.ok) return fail(room.why, 402); }
   try { await testImap(b.address.trim(), b.appPassword); }
   catch (e) {
     const m = (e as Error).message || "";

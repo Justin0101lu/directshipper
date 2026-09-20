@@ -7,8 +7,11 @@ export const env = {
   stripe: {
     key: process.env.STRIPE_SECRET_KEY || "",
     webhook: process.env.STRIPE_WEBHOOK_SECRET || "",
-    carrier: process.env.STRIPE_PRICE_CARRIER || "",
-    fleet: process.env.STRIPE_PRICE_FLEET || "",
+    prices: {
+      carrier: process.env.STRIPE_PRICE_CARRIER || "",
+      fleet: process.env.STRIPE_PRICE_FLEET || "",
+      enterprise: process.env.STRIPE_PRICE_ENTERPRISE || "",
+    },
   },
   ms: { id: process.env.MS_CLIENT_ID || "", secret: process.env.MS_CLIENT_SECRET || "" },
   inbound: { secret: process.env.INBOUND_SECRET || "", domain: process.env.INBOUND_DOMAIN || "in.directshipper.co" },

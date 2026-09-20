@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/components/api";
 import { useFlash } from "@/components/Flash";
@@ -39,6 +40,7 @@ export default function Sources() {
   };
   return (
     <>
+      {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("err") === "inboxes" && me && <p className="hint" style={{ color: "var(--red)" }}>{me.limits.planName} allows {me.limits.inboxes} connected inbox{me.limits.inboxes === 1 ? "" : "es"}. Remove one, or <Link href="/app/settings/billing" style={{ color: "var(--blue)" }}>move up a plan</Link> for more.</p>}
       <div className="pane-h"><div><h2>Sources</h2><p>Where your loads come in from</p></div>
         <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={scan} disabled={busy || !me?.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft")}>{busy ? <><span className="spin" />Scanning…</> : "Scan now"}</button></div></div>
       {me && me.mailboxes.length > 0 && (

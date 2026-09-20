@@ -3,6 +3,7 @@ import { getDb, schema } from "@/db";
 import { fail, json, withSession } from "@/lib/api";
 import { readAgreement } from "@/lib/ai/agreement";
 import { aiReady } from "@/lib/ai/client";
+import { PLANS, type PlanId } from "@/lib/plans";
 
 export const GET = withSession(async (_req, s) => {
   const db = await getDb();
@@ -12,6 +13,7 @@ export const GET = withSession(async (_req, s) => {
 /* Upload a broker-carrier agreement (PDF). The clause is extracted and stored as written. */
 export const POST = withSession(async (req, s) => {
   if (!aiReady()) return fail("ANTHROPIC_API_KEY is not set.");
+  { const db = await getDb(); const [a] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, s.aid)); if (!PLANS[a.plan as PlanId].agreements) return fail("Uploading broker agreements to clear holds is on Carrier and up.", 402); }
   const form = await req.formData();
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
   if (!files.length) return fail("Choose the signed broker-carrier agreement as a PDF.");

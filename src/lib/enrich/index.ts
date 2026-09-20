@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { spend, refund, TokenError } from "@/lib/tokens";
+import { REVEAL_COST } from "@/lib/plans";
 import { findymail } from "./findymail";
 import { pdl } from "./pdl";
 import { leadmagic, prospeo, wiza } from "./others";
@@ -81,7 +82,8 @@ export async function visibleContacts(accountId: string, facilityIds: string[]):
   return out;
 }
 
-/* One token per field. Charged only when there is something to show. */
+/* Who someone is (name, title, LinkedIn) is one token together; an email is one; a phone is three.
+   Charged only when there is something to show. */
 export async function reveal(accountId: string, contactId: string, field: Field) {
   const db = await getDb();
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId));
@@ -91,7 +93,8 @@ export async function reveal(accountId: string, contactId: string, field: Field)
   if (already.length) return { found: true, value: c[field], charged: 0 };
   if (field !== "name" && !c.name) throw new Error("This person has no name on file yet.");
   const who = c.name || "a contact";
-  await spend(accountId, 1, `${labelFor(field)} — ${who} at ${f.name}`, contactId);
+  const cost = REVEAL_COST[field];
+  const split = await spend(accountId, cost, `${labelFor(field)} — ${who} at ${f.name}`, contactId);
   try {
     let value: string | null = c[field] && !(field === "email" && c.emailStatus === "bounced") ? c[field] : null;
     let by = "";
@@ -107,7 +110,7 @@ export async function reveal(accountId: string, contactId: string, field: Field)
         for (const p of PEOPLE_ORDER) if (p.ready() && p.findPeople) { const r = await p.findPeople(f.shipper || f.name, domain, [c.name!], 1); if (r?.[0]?.linkedin) { value = r[0].linkedin; by = p.id; break; } }
       }
     }
-    if (!value) { await refund(accountId, 1, `No result — ${labelFor(field)} for ${who} at ${f.name}`, contactId); return { found: false, value: null, charged: 0 }; }
+    if (!value) { await refund(accountId, cost, `No result — ${labelFor(field)} for ${who} at ${f.name}`, contactId, split); return { found: false, value: null, charged: 0 }; }
     if (by) {
       const source = { ...((c.source as Record<string, string>) || {}), [field]: by };
       const patch: Partial<typeof schema.contacts.$inferInsert> = { source };
@@ -117,9 +120,10 @@ export async function reveal(accountId: string, contactId: string, field: Field)
       await db.update(schema.contacts).set(patch).where(eq(schema.contacts.id, c.id));
     }
     await db.insert(schema.reveals).values({ accountId, contactId, field }).onConflictDoNothing();
-    return { found: true, value, charged: 1 };
+    if (field === "name") await db.insert(schema.reveals).values({ accountId, contactId, field: "linkedin" }).onConflictDoNothing();   // LinkedIn rides along with the name
+    return { found: true, value, charged: cost };
   } catch (e) {
-    if (!(e instanceof TokenError)) await refund(accountId, 1, `Refund — ${labelFor(field)} for ${who} (${(e as Error).message})`, contactId);
+    if (!(e instanceof TokenError)) await refund(accountId, cost, `Refund — ${labelFor(field)} for ${who} (${(e as Error).message})`, contactId, split);
     throw e;
   }
 }
@@ -131,5 +135,5 @@ export async function reportBounce(accountId: string, contactId: string) {
   if (!c || c.emailStatus === "bounced") return;
   await db.update(schema.contacts).set({ emailStatus: "bounced" }).where(eq(schema.contacts.id, contactId));
   const paid = await db.select().from(schema.reveals).where(and(eq(schema.reveals.accountId, accountId), eq(schema.reveals.contactId, contactId), eq(schema.reveals.field, "email")));
-  if (paid.length) await refund(accountId, 1, "Bounced email refunded", contactId);
+  if (paid.length) await refund(accountId, REVEAL_COST.email, "Bounced email refunded", contactId);
 }
