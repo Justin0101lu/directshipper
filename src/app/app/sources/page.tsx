@@ -26,6 +26,12 @@ export default function Sources() {
     if (!confirm(`Disconnect ${address}? The stored password is deleted. Loads already read stay.`)) return;
     try { await api(`/api/mail/${id}`, { method: "DELETE" }); flash(`${address} disconnected.`); refresh(); } catch (x) { flash((x as Error).message, "err"); }
   }
+  async function rescan(id: string) {
+    setBusy(true);
+    try { const r = await api<{ stored: number; errors: string[] }>(`/api/mail/${id}/rescan`, { method: "POST" });
+      flash(r.errors.length && !r.stored ? `Rescan started, but reading failed: ${r.errors[0]}` : `Rescan started from the oldest message. First pass read ${r.stored} rate con${r.stored === 1 ? "" : "s"}; the rest continues every 10 minutes.`, r.errors.length && !r.stored ? "err" : "ok"); refresh(); }
+    catch (x) { flash((x as Error).message, "err"); } finally { setBusy(false); }
+  }
   const progress = (m: NonNullable<typeof me>["mailboxes"][number]) => {
     if (m.kind === "upload" || m.kind === "forward") return `${m.readCount} loads`;
     if (m.status === "error") return m.error || "error";
@@ -42,10 +48,10 @@ export default function Sources() {
         <div className="panel"><h3>Connected</h3>
           <table style={{ border: "none" }}><thead><tr><th>Source</th><th>Address</th><th>Status</th><th>Progress</th><th>Last read</th><th></th></tr></thead><tbody>
             {me.mailboxes.map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead">{KIND[m.kind] || m.kind}</td><td data-label="Address" className="num">{m.address}</td>
-              <td data-label="Status">{m.status === "error" ? <span className="tag t-flag" title={m.error || ""}>ERROR</span> : m.historyDone ? <span className="tag t-ver">UP TO DATE</span> : <span className="tag t-obs">READING HISTORY</span>}</td>
+              <td data-label="Status">{m.kind === "upload" || m.kind === "forward" ? <span className="tag t-ver">ACTIVE</span> : m.status === "error" ? <span className="tag t-flag" title={m.error || ""}>ERROR</span> : m.historyDone ? <span className="tag t-ver">UP TO DATE</span> : <span className="tag t-obs">READING HISTORY</span>}</td>
               <td data-label="Progress">{progress(m)}</td>
               <td data-label="Last read" className="num">{m.lastSyncAt ? new Date(m.lastSyncAt).toLocaleString() : "—"}</td>
-              <td data-label="" className="right">{(m.kind === "gmail_imap" || m.kind === "microsoft") && <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(m.id, m.address)}>Remove</button>}</td></tr>)}
+              <td data-label="" className="right">{(m.kind === "gmail_imap" || m.kind === "microsoft") && <span style={{ display: "inline-flex", gap: 6 }}><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => rescan(m.id)} disabled={busy} title="Start the history walk over from the oldest message">Rescan</button><button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(m.id, m.address)}>Remove</button></span>}</td></tr>)}
           </tbody></table>
           <p className="hint">The first scan walks your whole mailbox oldest-first, 60 messages every 10 minutes, so a mailbox with 2,000 rate cons takes about 6 hours. You can close this window; it keeps going. Scan now runs one pass right away. After the history is in, new rate cons show up within 10 minutes of landing.</p>
           {me.mailboxes.some((m) => m.error) && <p className="hint" style={{ color: "var(--red)" }}>{me.mailboxes.filter((m) => m.error).map((m) => `${m.address}: ${m.error}`).join(" · ")}</p>}
