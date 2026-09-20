@@ -30,7 +30,7 @@ export default function Prospects() {
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); }; document.addEventListener("keydown", k); return () => document.removeEventListener("keydown", k); }, []);
 
   const fac = (id: string | null) => (id && d?.facilities[id]) || null;
-  const nameOf = (s: StopRef) => fac(s.facilityId)?.name || [s.city, s.state].filter(Boolean).join(", ") || "Unknown dock";
+  const nameOf = (s: StopRef) => fac(s.facilityId)?.name || [s.city, s.state].filter(Boolean).join(", ") || "Unknown warehouse";
   const people = (fid: string) => d?.contacts[fid] || [];
 
   async function discover(fid: string) {
@@ -64,7 +64,7 @@ export default function Prospects() {
   const loads = useMemo(() => (d?.loads || []).filter((l) => !q || `${l.broker} ${l.lane} ${l.loadNumber} ${l.commodity} ${[...l.pickups, ...l.drops].map(nameOf).join(" ")}`.toLowerCase().includes(q.toLowerCase())), [d, q]); // eslint-disable-line react-hooks/exhaustive-deps
   const unrevealed = d?.lookalikes.rows.filter((x) => !x.revealed).length ?? 0;
 
-  /* The dock panel: what we know, who works there. */
+  /* The warehouse panel: what we know, who works there. */
   const toggle = (key: string) => setOpen(open === key ? null : key);
 
   function dockPanel(fid: string, colSpan: number, key: string) {
@@ -125,8 +125,8 @@ export default function Prospects() {
     <>
       <div className="pane-h"><div><h2>Prospects</h2><p>{d ? `${d.loads.length.toLocaleString()} loads · every shipper and receiver on them · ${me ? tok(me.tokens.total) + " available" : ""}` : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={() => setChip("look")}>Search lookalikes</button></div></div>
-      <div className="chips">{([["loads", "Loads", d?.loads.length ?? 0], ["docks", "Docks", d?.receivers.length ?? 0], ["look", "Lookalikes", d?.lookalikes.rows.length ?? 0]] as const).map(([id, label, n]) => <button key={id} className={`chip${chip === id ? " on" : ""}`} onClick={() => setChip(id)}>{label}<i>{n}</i></button>)}</div>
-      <p className="excl">Click a shipper or receiver to see what we know about the dock and who works there. Finding people is free; each name, email or phone is one token.</p>
+      <div className="chips">{([["loads", "Loads", d?.loads.length ?? 0], ["docks", "Warehouses", d?.receivers.length ?? 0], ["look", "Lookalikes", d?.lookalikes.rows.length ?? 0]] as const).map(([id, label, n]) => <button key={id} className={`chip${chip === id ? " on" : ""}`} onClick={() => setChip(id)}>{label}<i>{n}</i></button>)}</div>
+      <p className="excl">Click a shipper or receiver to see what we know about the warehouse and who works there. Finding people is free; each name, email or phone is one token.</p>
 
       {chip === "loads" && (
         <div className="lv" style={{ overflow: "visible" }}>
@@ -154,8 +154,8 @@ export default function Prospects() {
       )}
 
       {chip === "docks" && (
-        <table><thead><tr><th>Dock</th><th>Your loads</th><th>Ships outbound</th><th>Standing</th><th>People</th><th></th></tr></thead><tbody>
-          {d && !d.receivers.length && <tr style={{ cursor: "default" }}><td colSpan={6} className="small">No docks yet.</td></tr>}
+        <table><thead><tr><th>Warehouse</th><th>Your loads</th><th>Ships outbound</th><th>Standing</th><th>People</th><th></th></tr></thead><tbody>
+          {d && !d.receivers.length && <tr style={{ cursor: "default" }}><td colSpan={6} className="small">No warehouses yet.</td></tr>}
           {d?.receivers.flatMap((dk) => { const ob = dk.outbound; const n = people(dk.facilityId).length; const row = (
             <tr key={dk.facilityId} onClick={() => setOpen(open === dk.facilityId ? null : dk.facilityId)}>
               <td className="lead">{dk.name}<div className="cell-sub">{dk.city}</div></td>
@@ -170,7 +170,7 @@ export default function Prospects() {
 
       {chip === "look" && (<>
         <div className="panel"><h3>Search lookalikes <span className="tag t-obs" style={{ marginLeft: 6 }}>1 TOKEN PER SHIPPER</span></h3>
-          <p className="ph">Starts from what you already haul and looks for docks in the network shipping the same kind of freight. Anything you have hauled for a broker is excluded, and so is anything that broker moves.</p>
+          <p className="ph">Starts from what you already haul and looks for warehouses in the network shipping the same kind of freight. Anything you have hauled for a broker is excluded, and so is anything that broker moves.</p>
           <div className="grid2" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             <div className="formrow"><label>Origin state</label><input type="text" placeholder="Any" value={search.state} onChange={(e) => setSearch({ ...search, state: e.target.value.toUpperCase().slice(0, 2) })} /></div>
             <div className="formrow"><label>Equipment</label><select value={search.equipment} onChange={(e) => setSearch({ ...search, equipment: e.target.value })}><option value="">Like mine</option><option value="reefer">Reefer</option><option value="dry_van">Dry van</option><option value="flatbed">Flatbed</option></select></div>

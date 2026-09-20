@@ -1,7 +1,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 
-/* Network observations: what all carriers together have seen at a dock.
+/* Network observations: what all carriers together have seen at a warehouse.
    Published only once K unrelated accounts have moved freight through it,
    so no single carrier's loads can be traced back. Below K we show
    "not enough observations" rather than a number. */

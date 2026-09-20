@@ -181,7 +181,7 @@ export const prospects = pgTable("prospects", {
   createdAt: now(),
 }, (t) => [uniqueIndex("prospects_unique_idx").on(t.accountId, t.facilityId)]);
 
-/* People at a dock. Shared across carriers: one discovery serves everyone.
+/* People at a warehouse. Shared across carriers: one discovery serves everyone.
    What each carrier has paid to see is in `reveals`. */
 export const contacts = pgTable("contacts", {
   id: id(),

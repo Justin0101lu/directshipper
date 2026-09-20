@@ -15,7 +15,7 @@ import { PLANS, type PlanId } from "@/lib/plans";
 
 /* Outreach, prepared for the carrier.
 
-   A sequence belongs to a dock and is written from the carrier's own history
+   A sequence belongs to a warehouse and is written from the carrier's own history
    there, addressed to {{first}}. A person is attached later, when the
    carrier reveals an email. Approving the opener sends it and schedules the
    rest; a reply stops everything and drafts the answer. */
@@ -56,13 +56,13 @@ export async function prepareDock(accountId: string, facilityId: string) {
   if (!aiReady()) throw new Error("ANTHROPIC_API_KEY is not set, so nothing can be drafted.");
   const rel = await relationship(accountId, facilityId);
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, facilityId));
-  if (!f) throw new Error("Unknown dock");
+  if (!f) throw new Error("Unknown warehouse");
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
   const [user] = await db.select().from(schema.users).where(eq(schema.users.accountId, accountId)).limit(1);
   const prof = await computeProfile(accountId);
   const ob = await outboundFor(f.id, accountId);
   const dh = prof.deadhead.find((d) => d.city.startsWith(f.city));
-  const summary = rel ? relationshipLine(rel) : "No loads with this dock yet; matched to your freight profile.";
+  const summary = rel ? relationshipLine(rel) : "No loads with this warehouse yet; matched to your freight profile.";
   const touches = await draftSequence({
     carrier: acct.company, signer: "{{signer}}", contactFirst: null, contactTitle: null,
     facility: f.name, city: `${f.city}, ${f.state}`, relationship: summary, kind: rel ? rel.kind : "lookalike",
@@ -76,7 +76,7 @@ export async function prepareDock(accountId: string, facilityId: string) {
   return seq;
 }
 
-/* The docks worth writing to, warmest first: real history, no broker hold. */
+/* The warehouses worth writing to, warmest first: real history, no broker hold. */
 export async function rankedDocks(accountId: string, limit = 40): Promise<Relationship[]> {
   const db = await getDb();
   const ST = schema.stops;
@@ -87,7 +87,7 @@ export async function rankedDocks(accountId: string, limit = 40): Promise<Relati
   return out.sort((a, b) => b.warmth - a.warmth).slice(0, limit);
 }
 
-/* Cron: keep the top docks drafted as the scan fills in. A few per tick. */
+/* Cron: keep the top warehouses drafted as the scan fills in. A few per tick. */
 export async function prepareTop(accountId: string, n = 3) {
   const db = await getDb();
   const docks = await rankedDocks(accountId, 15);
@@ -95,14 +95,14 @@ export async function prepareTop(accountId: string, n = 3) {
   let made = 0;
   for (const d of docks) {
     if (have.has(d.facilityId) || d.loads < 2) continue;
-    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;          // autopilot never touches a held dock
+    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;          // autopilot never touches a held warehouse
     try { await prepareDock(accountId, d.facilityId); made++; } catch (e) { console.error("[outreach] draft failed", d.name, (e as Error).message); }
     if (made >= n) break;
   }
   return made;
 }
 
-/* Look up who works at the busiest docks on its own, a few per tick, so titles are on
+/* Look up who works at the busiest warehouses on its own, a few per tick, so titles are on
    screen before anyone clicks. Free to the carrier; the lookup is cached 90 days. */
 export async function discoverTop(accountId: string, n = 5) {
   const db = await getDb();
@@ -132,7 +132,7 @@ export async function attachContact(accountId: string, sequenceId: string, conta
   const [seq] = await db.select().from(schema.sequences).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
   if (!seq) throw new Error("No sequence");
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId));
-  if (!c || c.facilityId !== seq.facilityId) throw new Error("That person is not at this dock.");
+  if (!c || c.facilityId !== seq.facilityId) throw new Error("That person is not at this warehouse.");
   await db.update(schema.sequences).set({ contactId }).where(eq(schema.sequences.id, sequenceId));
 }
 
@@ -149,7 +149,7 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   if (!seq) throw new Error("No sequence");
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
   if (!PLANS[acct.plan as PlanId].outreach) throw new Error("Sending is on Carrier and up. Drafting stays free.");
-  if (!seq.contactId) throw new Error("Pick a person at this dock first.");
+  if (!seq.contactId) throw new Error("Pick a person at this warehouse first.");
   const hold = await dockHolds(accountId, seq.facilityId);
   if (!hold.clear) throw new Error(hold.reason);
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
@@ -184,7 +184,7 @@ export async function runDueSteps() {
       await checkReply(seq.id);
       const [fresh] = await db.select().from(schema.sequences).where(eq(schema.sequences.id, seq.id));
       if (fresh.status !== "active" || !fresh.contactId) continue;
-      if (!(await dockHolds(seq.accountId, seq.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this dock." }).where(eq(schema.sequences.id, seq.id)); continue; }
+      if (!(await dockHolds(seq.accountId, seq.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, seq.id)); continue; }
       const step = fresh.step;
       if (step >= SEQUENCE.length) { await db.update(schema.sequences).set({ status: "done", nextAt: null }).where(eq(schema.sequences.id, seq.id)); continue; }
       const [t] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, step)));
@@ -262,7 +262,7 @@ export async function sendSuggestedReply(accountId: string, sequenceId: string, 
   await db.update(schema.sequences).set({ suggested: null }).where(eq(schema.sequences.id, seq.id));
 }
 
-/* Everything the Outreach page shows: one card per dock, warmest first. */
+/* Everything the Outreach page shows: one card per warehouse, warmest first. */
 export type Card = {
   facilityId: string; name: string; city: string; rel: Relationship | null; summary: string;
   sequence: (typeof schema.sequences.$inferSelect & { touches: (typeof schema.touches.$inferSelect)[] }) | null;
@@ -274,7 +274,7 @@ export async function cards(accountId: string): Promise<Card[]> {
   const docks = await rankedDocks(accountId, 40);
   const seqs = await db.select().from(schema.sequences).where(eq(schema.sequences.accountId, accountId)).orderBy(desc(schema.sequences.createdAt));
   const byFac = new Map(seqs.map((s) => [s.facilityId, s]));
-  /* docks with a sequence but no longer in the top list (lookalikes, older) still show */
+  /* warehouses with a sequence but no longer in the top list (lookalikes, older) still show */
   const ids = [...new Set([...docks.map((d) => d.facilityId), ...seqs.map((s) => s.facilityId)])];
   const facs = ids.length ? await db.select().from(schema.facilities).where(inArray(schema.facilities.id, ids)) : [];
   const people = await visibleContacts(accountId, ids);
@@ -309,11 +309,11 @@ export async function cards(accountId: string): Promise<Card[]> {
 
 /* ---------- autopilot ----------
    The sales agent. Runs from cron for accounts set to "send": takes the
-   warmest clear docks that have no sequence running, finds the people
+   warmest clear warehouses that have no sequence running, finds the people
    (free), reveals the best-titled person's name and email (tokens, inside
    the daily cap), attaches them, and sends the opener from the account's
    sending mailbox. Follow-ups and reply handling are already automatic.
-   Never a held dock, never past autoPerDay, never on Free. */
+   Never a held warehouse, never past autoPerDay, never on Free. */
 export async function autopilotTick(accountId: string) {
   const db = await getDb();
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));

@@ -57,7 +57,7 @@ export default function Sources() {
         </div>
       )}
       {me && me.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft") && (
-        <div className="panel"><h3>Who sends outreach</h3><p className="ph">Each sending mailbox speaks for one person and one of your companies. Outreach from it is signed that way, and every sequence picks its sender. Holds are account-wide: switching companies never clears a held dock.</p>
+        <div className="panel"><h3>Who sends outreach</h3><p className="ph">Each sending mailbox speaks for one person and one of your companies. Outreach from it is signed that way, and every sequence picks its sender. Holds are account-wide: switching companies never clears a held warehouse.</p>
           <table style={{ border: "none" }}><thead><tr><th>Mailbox</th><th>Signed as</th><th>Company</th></tr></thead><tbody>
             {me.mailboxes.filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft").map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead num">{m.address}</td>
               <td data-label="Signed as"><input type="text" defaultValue={m.senderName || ""} placeholder="Justin Ruiz, owner" onBlur={(e) => e.target.value !== (m.senderName || "") && setIdentity(m.id, { senderName: e.target.value })} style={{ padding: "7px 10px", fontSize: 14 }} /></td>
@@ -72,7 +72,7 @@ export default function Sources() {
       <div className="panel" style={{ marginTop: 20 }}><h3>Where the data comes from</h3>
         <p className="ph">Some of it is yours. Some we buy and pass along. You should be able to tell which is which on any figure you see.</p>
         <div className="srcgrid" style={{ marginTop: 18 }}>
-          {[["Yours", "Your rate cons", "What you haul, where, for whom, at what rate. Read once, kept private, and the basis of every match."], ["Network", "Facility observations", "Published only once enough unrelated carriers have moved freight through a dock that no single load can be traced back."], ["Bought", "Emails & phones", `Contact providers tried in order until one returns a verified result.${me?.features.providers.length ? " Live: " + me.features.providers.join(", ") + "." : " None configured yet."}`], ["Free", "FMCSA", "Operating authority and status. Public record, never charged for."]].map(([b, h, p]) => <div className="src" key={h}><div className="big">{b}</div><h4>{h}</h4><p>{p}</p></div>)}
+          {[["Yours", "Your rate cons", "What you haul, where, for whom, at what rate. Read once, kept private, and the basis of every match."], ["Network", "Facility observations", "Published only once enough unrelated carriers have moved freight through a warehouse that no single load can be traced back."], ["Bought", "Emails & phones", `Contact providers tried in order until one returns a verified result.${me?.features.providers.length ? " Live: " + me.features.providers.join(", ") + "." : " None configured yet."}`], ["Free", "FMCSA", "Operating authority and status. Public record, never charged for."]].map(([b, h, p]) => <div className="src" key={h}><div className="big">{b}</div><h4>{h}</h4><p>{p}</p></div>)}
         </div>
       </div>
     </>

@@ -68,7 +68,7 @@ async function main() {
     if (rnd() < (backP[d.city] ?? 0.3)) {
       const home = pick(HOME_DOCKS);
       const t2 = new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3 + rnd() * 40 * 3600e3);
-      const back = rc({ facility: `${d.city} Cold Dock`, street: `${100 + Math.floor(rnd() * 900)} Industrial Way`, city: d.city, state: d.state, zip: "", shipper: null, family: "frozen", w: 1 }, home, br, t2, 1.8 + rnd() * 1.2, true);
+      const back = rc({ facility: `${d.city} Cold Warehouse`, street: `${100 + Math.floor(rnd() * 900)} Industrial Way`, city: d.city, state: d.state, zip: "", shipper: null, family: "frozen", w: 1 }, home, br, t2, 1.8 + rnd() * 1.2, true);
       back.shipper = null;
       if (await storeLoad(acct.id, mb.id, `demo:${i}:back`, back, t2)) n++;
     }
@@ -77,9 +77,9 @@ async function main() {
 
   /* Agreements on file for six of the eight brokers, shippers-only clauses, so the
      demo's receivers clear. Two brokers have none, so the broad assumption holds
-     any dock they alone put us at. */
+     any warehouse they alone put us at. */
   for (const [b, mc] of BROKERS) {
-    const broad = false;   // every demo clause names shippers only; pickup docks stay held, receivers clear
+    const broad = false;   // every demo clause names shippers only; pickup warehouses stay held, receivers clear
     await db.insert(schema.agreements).values({
       accountId: acct.id, broker: b, brokerMc: mc, termMonths: broad ? 18 : 12, fromEvent: "last_shipment", survives: true, coversConsignees: broad, coversAllLocations: false,
       damages: "15% of gross revenue on solicited freight", page: "page 3, section 8", filename: `${b.replace(/\s+/g, "-")}-agreement.pdf`,
@@ -89,7 +89,7 @@ async function main() {
 
   /* Network carriers: their loads originate at the demo carrier's receivers, so outbound observations exist. */
   const ORIGINS = DESTS.filter((d) => d.city !== "Las Vegas");
-  const NET_DESTS = [{ facility: "Ontario Cold Dock", street: "3000 E Guasti Rd", city: "Ontario", state: "CA", miles: 390 }, { facility: "Corona Produce Terminal", street: "1200 Magnolia Ave", city: "Corona", state: "CA", miles: 395 }, { facility: "LA Cold Storage", street: "3300 E Vernon Ave", city: "Vernon", state: "CA", miles: 420 }, { facility: "Tucson Foods DC", street: "4400 E Valencia Rd", city: "Tucson", state: "AZ", miles: 115 }, { facility: "Houston Grocers", street: "5900 Clinton Dr", city: "Houston", state: "TX", miles: 240 }];
+  const NET_DESTS = [{ facility: "Ontario Cold Warehouse", street: "3000 E Guasti Rd", city: "Ontario", state: "CA", miles: 390 }, { facility: "Corona Produce Terminal", street: "1200 Magnolia Ave", city: "Corona", state: "CA", miles: 395 }, { facility: "LA Cold Storage", street: "3300 E Vernon Ave", city: "Vernon", state: "CA", miles: 420 }, { facility: "Tucson Foods DC", street: "4400 E Valencia Rd", city: "Tucson", state: "AZ", miles: 115 }, { facility: "Houston Grocers", street: "5900 Clinton Dr", city: "Houston", state: "TX", miles: 240 }];
   const LOOKALIKES = [{ facility: "Valley Cold Pack", street: "14800 Slover Ave", city: "Fontana", state: "CA", shipper: "Valley Cold Pack" }, { facility: "Harborline Foods", street: "2500 E 37th St", city: "Vernon", state: "CA", shipper: "Harborline Foods" }, { facility: "Sierra Dairy Group", street: "13200 Central Ave", city: "Chino", state: "CA", shipper: "Sierra Dairy Group" }, { facility: "Pacific Meat Co", street: "4000 Bandini Blvd", city: "Vernon", state: "CA", shipper: "Pacific Meat Co" }, { facility: "Redlands Citrus Co", street: "1600 W Redlands Blvd", city: "Redlands", state: "CA", shipper: "Redlands Citrus Co" }];
   for (let c = 0; c < 6; c++) {
     const [na] = await db.insert(schema.accounts).values({ company: `Network carrier ${c + 1}` }).returning();

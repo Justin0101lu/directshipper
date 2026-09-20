@@ -592,7 +592,7 @@ tr.sel td{background:var(--blue-soft)}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 .rec{display:flex;gap:10px;align-items:center;margin:8px 0}
 
-/* call script: read off a phone at the dock */
+/* call script: read off a phone at the warehouse */
 .script{background:var(--sunk);border:1px solid var(--rule);border-left:4px solid var(--blue);border-radius:2px;
         padding:20px 22px;font-size:18px;line-height:1.55;letter-spacing:-.005em}
 
@@ -684,7 +684,7 @@ textarea{font-family:var(--sans);font-size:14.5px;line-height:1.5;padding:11px 1
 .chan-tab{background:var(--card)}
 .landing-hero{padding:80px 0 60px}
 
-/* ---------- prospects: docks inside load rows, people panel ---------- */
+/* ---------- prospects: warehouses inside load rows, people panel ---------- */
 .dock-line{line-height:1.35;margin-bottom:3px}
 .dock-name{color:var(--ink);font-weight:500;border-bottom:1px solid var(--rule-hard)}
 .dock-name:hover{color:var(--blue);border-bottom-color:var(--blue)}

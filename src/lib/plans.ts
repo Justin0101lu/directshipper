@@ -15,11 +15,11 @@ export const PLANS: Record<PlanId, {
 }> = {
   free: { id: "free", name: "Free", price: 0, monthly: 0, extra: 0.5, outreach: false, export: false, agreements: false, inboxes: 1, perDay: 0,
     who: "Free forever, not a trial",
-    perks: ["Connect one inbox or upload rate cons — full history scan", "Every shipper and receiver on your loads", "Who books freight at your busiest docks, by title", "Your companies, by MC", "Ask your freight", "Outreach drafts you can copy", "10 welcome tokens to reveal people"],
+    perks: ["Connect one inbox or upload rate cons — full history scan", "Every shipper and receiver on your loads", "Who books freight at your busiest warehouses, by title", "Your companies, by MC", "Ask your freight", "Outreach drafts you can copy", "10 welcome tokens to reveal people"],
     off: ["Autopilot does not send", "No broker agreement upload"] },
   carrier: { id: "carrier", name: "Carrier", price: 99, monthly: 200, extra: 0.4, outreach: true, export: true, agreements: true, inboxes: 1, perDay: 3,
     who: "1 to 20 trucks, nobody selling",
-    perks: ["The right person at every dock — the one who books freight, with a verified email", "Autopilot works 3 new shippers a day, the safe pace for one inbox", "1 sending inbox", "Lookalike shippers", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
+    perks: ["The right person at every warehouse — the one who books freight, with a verified email", "Autopilot works 3 new shippers a day, the safe pace for one inbox", "1 sending inbox", "Lookalike shippers", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
   fleet: { id: "fleet", name: "Fleet", price: 299, monthly: 600, extra: 0.3, outreach: true, export: true, agreements: true, inboxes: 5, perDay: 10,
     who: "20 to 100 trucks",
     perks: ["Everything in Carrier", "Autopilot works 10 new shippers a day across your inboxes", "Up to 5 sending inboxes, each with its own company", "Load history import — CSV & scheduled report", "Unlimited users"], off: [] },

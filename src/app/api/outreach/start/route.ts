@@ -2,7 +2,7 @@ import { body, fail, json, withSession } from "@/lib/api";
 import { attachContact, prepareDock } from "@/lib/outreach";
 import { getDb, schema } from "@/db";
 import { eq } from "drizzle-orm";
-/* Prepare a dock's sequence (free), optionally attaching a person. */
+/* Prepare a warehouse's sequence (free), optionally attaching a person. */
 export const POST = withSession(async (req, s) => {
   const b = await body<{ facilityId?: string; contactId?: string }>(req);
   let facilityId = b.facilityId;

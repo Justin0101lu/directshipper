@@ -4,8 +4,8 @@ import { outboundFor, type Outbound } from "./network";
 import { computeProfile } from "./profile";
 
 /* Prospects: one list, warmest first.
-   Receivers  - docks the carrier already delivers to. Free.
-   Lookalikes - docks in the network shipping freight like theirs. 1 token each. */
+   Receivers  - warehouses the carrier already delivers to. Free.
+   Lookalikes - warehouses in the network shipping freight like theirs. 1 token each. */
 
 export type Receiver = {
   facilityId: string; name: string; city: string; deliveries: number; lastAt: string | null;
@@ -40,8 +40,8 @@ export async function receivers(accountId: string): Promise<Receiver[]> {
     }
     const deliveries = Number(r.n);
     let standing: Receiver["standing"] = "clear", why = "";
-    if (hold) { standing = "hold"; why = "A broker you still work with tenders freight out of this dock. Hidden from outreach."; }
-    else if (!ob.ok) { standing = "thin"; why = `You deliver here ${deliveries} times. Not enough unrelated carriers have seen this dock to say what it ships out; ask at the window.`; }
+    if (hold) { standing = "hold"; why = "A broker you still work with tenders freight out of this warehouse. Hidden from outreach."; }
+    else if (!ob.ok) { standing = "thin"; why = `You deliver here ${deliveries} times. Not enough unrelated carriers have seen this warehouse to say what it ships out; ask at the window.`; }
     else if (ob.loadsPerMonth < 5) { standing = "thin"; why = `Ships about ${ob.loadsPerMonth} loads a month outbound. Worth a call, not a plan.`; }
     else { why = `You deliver here ${deliveries} times. Ships about ${ob.loadsPerMonth}/mo outbound${ob.lanes[0] ? ", " + ob.lanes[0].pct + "% toward " + ob.lanes[0].dest : ""}. No broker put you in this relationship.`; }
     const [pk] = await db.select({ n: sql<number>`count(distinct ${ST.loadId})` }).from(ST).where(and(eq(ST.accountId, accountId), eq(ST.kind, "pickup"), eq(ST.facilityId, f.id)));
@@ -62,7 +62,7 @@ export async function lookalikes(accountId: string, opts: { originState?: string
   const family = opts.family || (prof.families[0]?.name.startsWith("Frozen") ? "frozen" : prof.families[0]?.name.startsWith("Fresh") ? "produce" : "dry");
   const equipment = opts.equipment || (prof.equipment[0]?.name === "Dry van" ? "dry_van" : prof.equipment[0]?.name === "Flatbed" ? "flatbed" : "reefer");
   const ST = schema.stops;
-  /* Every dock this carrier has touched, as a pickup or a drop. */
+  /* Every warehouse this carrier has touched, as a pickup or a drop. */
   const known = (await db.select({ id: ST.facilityId }).from(ST).where(and(eq(ST.accountId, accountId), sql`${ST.facilityId} is not null`)).groupBy(ST.facilityId)).map((r) => r.id!);
   const brokers = await activeBrokers(accountId);
 
@@ -78,7 +78,7 @@ export async function lookalikes(accountId: string, opts: { originState?: string
     const ob = await outboundFor(c.id!, accountId);
     if (!ob.ok) continue;
     if (ob.loadsPerMonth < (opts.minPerMonth ?? 4)) continue;
-    /* Broker relationship exclusion: the carrier's active brokers tender out of this dock (seen anywhere in the network). */
+    /* Broker relationship exclusion: the carrier's active brokers tender out of this warehouse (seen anywhere in the network). */
     if (brokers.length) {
       const [h] = await db.select({ c: sql<number>`count(*)` }).from(L).where(and(inArray(L.broker, brokers),
         sql`exists (select 1 from ${ST} s where s.load_id = ${L.id} and s.kind = 'pickup' and s.facility_id = ${c.id!})`));

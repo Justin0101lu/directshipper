@@ -7,7 +7,7 @@ import { outboundFor } from "@/lib/freight/network";
 import { laneMedian } from "@/lib/freight/profile";
 
 /* Prospects = the loads, with both ends of every one, plus everything we
-   know about each dock and the people there. */
+   know about each warehouse and the people there. */
 export const GET = withSession(async (req, s) => {
   const u = new URL(req.url);
   const db = await getDb();
@@ -24,7 +24,7 @@ export const GET = withSession(async (req, s) => {
   const recv = await receivers(s.aid);
   const look = await lookalikes(s.aid, { originState: u.searchParams.get("state") || undefined, equipment: u.searchParams.get("equipment") || undefined, family: u.searchParams.get("family") || undefined, minPerMonth: Number(u.searchParams.get("min") || 4) || 4 });
   const contacts = await visibleContacts(s.aid, [...new Set([...facIds, ...look.rows.map((r) => r.facilityId)])]);
-  /* Every dock on the page gets counts and outbound, pickup-only docks included. */
+  /* Every warehouse on the page gets counts and outbound, pickup-only warehouses included. */
   const docks: Record<string, unknown> = Object.fromEntries(recv.map((r) => [r.facilityId, r]));
   const tally: Record<string, { in: number; out: number }> = {};
   for (const st of stops) { if (!st.facilityId) continue; const t = (tally[st.facilityId] ||= { in: 0, out: 0 }); if (st.kind === "drop") t.in++; else t.out++; }
@@ -32,7 +32,7 @@ export const GET = withSession(async (req, s) => {
     if (docks[fid]) continue;
     const f = facMap[fid]; const ob = await outboundFor(fid, s.aid); const t = tally[fid] || { in: 0, out: 0 };
     docks[fid] = { facilityId: fid, name: f.name, city: `${f.city}, ${f.state}`, deliveries: t.in, pickups: t.out, outbound: ob,
-      standing: ob.ok ? "clear" : "thin", why: t.out ? `You pick up here ${t.out} time${t.out === 1 ? "" : "s"}. ${ob.ok ? `Ships about ${ob.loadsPerMonth}/mo outbound.` : "Not enough unrelated carriers have seen this dock to say what else it ships."}` : "" };
+      standing: ob.ok ? "clear" : "thin", why: t.out ? `You pick up here ${t.out} time${t.out === 1 ? "" : "s"}. ${ob.ok ? `Ships about ${ob.loadsPerMonth}/mo outbound.` : "Not enough unrelated carriers have seen this warehouse to say what else it ships."}` : "" };
   }
 
   return json({

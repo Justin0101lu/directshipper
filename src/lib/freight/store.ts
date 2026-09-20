@@ -12,7 +12,7 @@ async function upsertFacility(f: Stop, shipper: string | null) {
     if (!existing.shipper && shipper) await db.update(schema.facilities).set({ shipper }).where(eq(schema.facilities.id, existing.id));
     return existing.id;
   }
-  const name = f.facility || shipper || `${normCity(f.city)} dock`;
+  const name = f.facility || shipper || `${normCity(f.city)} warehouse`;
   const [row] = await db.insert(schema.facilities).values({
     key, name, street: f.street, city: normCity(f.city), state: normState(f.state), zip: f.zip,
     type: facilityType(name, shipper), shipper,

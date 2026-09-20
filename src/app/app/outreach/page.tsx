@@ -32,7 +32,7 @@ export default function Outreach() {
     catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/settings/billing"); }
     finally { setBusy(null); }
   };
-  const prepare = (c: Card) => run(`prep:${c.facilityId}`, () => api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId } }), "Sequence written from your history with this dock.");
+  const prepare = (c: Card) => run(`prep:${c.facilityId}`, () => api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId } }), "Sequence written from your history with this warehouse.");
   const prepareTop = () => run("prep:top", async () => { const x = await api<{ made: number }>("/api/outreach/prepare", { method: "POST", json: { n: 5 } }); flash(`${x.made} sequence${x.made === 1 ? "" : "s"} written.`); });
   const discover = (c: Card) => run(`disc:${c.facilityId}`, () => api("/api/contacts/discover", { method: "POST", json: { facilityId: c.facilityId } }), "Looked up. Titles are free; an email is one token.");
   const revealEmail = (c: Card, p: Person) => run(`email:${p.id}`, async () => {
@@ -106,11 +106,11 @@ export default function Outreach() {
 
   return (
     <>
-      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.filter((c) => c.hold.clear).length} of ${d.cards.length} docks have no hold on file. Sequences are written from your history with each dock; held docks are never touched.` : "Loading…"}</p></div>
+      <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.filter((c) => c.hold.clear).length} of ${d.cards.length} warehouses have no hold on file. Sequences are written from your history with each warehouse; held warehouses are never touched.` : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/settings/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
       {me && (
         <div className="auto-bar">
-          <div><b>Autopilot</b><span className="small"> · {me.autopilot === "send" ? `reaching out to up to ${me.autoPerDay} new shippers a day, inside your ${me.tokens.cap || "unlimited"}-token daily cap, never one on hold` : me.autopilot === "draft" ? "writing sequences for your warmest docks; you approve every opener" : "off; nothing is drafted or sent on its own"}</span></div>
+          <div><b>Autopilot</b><span className="small"> · {me.autopilot === "send" ? `reaching out to up to ${me.autoPerDay} new shippers a day, inside your ${me.tokens.cap || "unlimited"}-token daily cap, never one on hold` : me.autopilot === "draft" ? "writing sequences for your warmest warehouses; you approve every opener" : "off; nothing is drafted or sent on its own"}</span></div>
           <div className="auto-ctl">
             {(["off", "draft", "send"] as const).map((k) => <button key={k} className={`chip${me.autopilot === k ? " on" : ""}`} disabled={busy === "auto" || (k === "send" && (!canSend || !hasMailbox))} title={k === "send" && !canSend ? "Sending needs Carrier or Fleet" : k === "send" && !hasMailbox ? "Connect a sending mailbox first" : ""} onClick={() => setAuto(k)}>{k === "off" ? "Off" : k === "draft" ? "Draft only" : "Send"}</button>)}
             {me.autopilot === "send" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>shippers a day <input type="number" min={0} max={me.limits.perDay || 50} defaultValue={me.autoPerDay} onBlur={(e) => Number(e.target.value) !== me.autoPerDay && setAuto("send", Number(e.target.value))} style={{ width: 64, padding: "5px 8px", fontSize: 13 }} /></label>}
@@ -119,7 +119,7 @@ export default function Outreach() {
       )}
       {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting, finding contacts and reading replies are free. Sends are unlimited on both paid plans.</p></div>}
       <div className="chips">{FILTERS.map(([k, label]) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}<i>{counts(k)}</i></button>)}</div>
-      {d && !cards.length && <div className="empty"><h3>Nothing here yet</h3><p>{d.cards.length ? "No docks under this filter." : "Docks appear as your rate cons are read. Each one gets a sequence written from your history there."}</p></div>}
+      {d && !cards.length && <div className="empty"><h3>Nothing here yet</h3><p>{d.cards.length ? "No warehouses under this filter." : "Warehouses appear as your rate cons are read. Each one gets a sequence written from your history there."}</p></div>}
       {cards.map((c) => {
         const [sl, sc] = STATE[c.state] || STATE.needs_draft; const isOpen = open === c.facilityId; const p = c.contact || c.best;
         return (
@@ -135,10 +135,10 @@ export default function Outreach() {
             </div>
             <div className="ocard-a" onClick={(e) => e.stopPropagation()}>{primary(c)}</div>
             {isOpen && c.state === "held" && <div className="seq-panel">
-              <p className="hint" style={{ marginTop: 0 }}>Nothing is drafted or sent for a dock on hold. Each broker below put you at this dock; the hold runs from your last load with them. Upload a broker&rsquo;s signed agreement and the app uses the clause as written instead of the 24-month assumption. Read it with your attorney; the app shows dates and documents, not a verdict.</p>
+              <p className="hint" style={{ marginTop: 0 }}>Nothing is drafted or sent for a warehouse on hold. Each broker below put you at this warehouse; the hold runs from your last load with them. Upload a broker&rsquo;s signed agreement and the app uses the clause as written instead of the 24-month assumption. Read it with your attorney; the app shows dates and documents, not a verdict.</p>
               {c.hold.holds.map((h) => <div key={h.broker} className={`hold-row${h.expired ? " expired" : ""}`}><b>{h.broker}</b><span className="small"> · last load {h.lastLoad} · {h.expired ? "term ran out" : "held until"} {h.until} · {h.source === "agreement" ? `${h.termMonths ?? "?"} months per the agreement${h.coversConsignees ? ", consignees included" : ", shippers only"}` : "assumed 24 months, consignees included"}</span>{h.clause && <blockquote className="clause-q">{h.clause}</blockquote>}</div>)}
             </div>}
-            {isOpen && c.state !== "held" && (c.sequence ? seqPanel(c) : <div className="seq-panel"><p className="hint" style={{ margin: 0 }}>No sequence written yet for this dock. Writing one is free and takes a few seconds.</p></div>)}
+            {isOpen && c.state !== "held" && (c.sequence ? seqPanel(c) : <div className="seq-panel"><p className="hint" style={{ margin: 0 }}>No sequence written yet for this warehouse. Writing one is free and takes a few seconds.</p></div>)}
           </div>
         );
       })}
