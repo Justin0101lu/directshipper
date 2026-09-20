@@ -16,7 +16,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
       const r = await api<{ first: { stored: number; skipped: number; errors: string[] } }>("/api/mail/gmail", { method: "POST", json: { address: addr, appPassword: pw, senderName: who } });
       flash(r.first.errors.length && !r.first.stored
         ? `Connected, but reading failed: ${r.first.errors[0]}`
-        : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}. The rest of your history reads in the background, about 360 messages an hour; watch progress under Account → Sources.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
+        : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}. The rest of your history reads in the background, about 360 messages an hour; watch progress under Settings → Sources.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
       onDone?.();
     } catch (x) { flash((x as Error).message, "err"); } finally { setBusy(null); }
   }
@@ -49,7 +49,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
           <div className="formrow" style={{ gridColumn: "1 / -1" }}><label htmlFor="g-who">Sign outreach from this mailbox as</label><input id="g-who" type="text" value={who} onChange={(e) => setWho(e.target.value)} placeholder="Justin Ruiz, owner" /><p className="hint">Connect a second mailbox for a dispatcher or salesperson and pick who sends per dock.</p></div>
           <div style={{ gridColumn: "1 / -1" }}><button className="btn btn-lg" disabled={busy === "gmail"}>{busy === "gmail" ? <><span className="spin" />Checking the login and reading your first rate cons…</> : "Connect Gmail"}</button></div>
         </form>
-        <p className="hint">Works with Google Workspace too, as long as 2-Step Verification is on. Your first rate cons show within a minute; the full history reads in the background at about 360 messages an hour. Disconnect any time under Account &rarr; Sources, or revoke the app password from the same Google page.</p>
+        <p className="hint">Works with Google Workspace too, as long as 2-Step Verification is on. Your first rate cons show within a minute; the full history reads in the background at about 360 messages an hour. Disconnect any time under Settings &rarr; Sources, or revoke the app password from the same Google page.</p>
       </div>
 
       {me?.features.microsoft && (

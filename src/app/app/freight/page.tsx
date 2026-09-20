@@ -22,7 +22,7 @@ export default function Freight() {
     <>
       <div className="pane-h"><div><h2>My freight</h2><p>{p ? (hasLoads ? `What Direct Shipper learned from ${p.loads.toLocaleString()} rate cons${p.from ? `, ${p.from} to ${p.to}` : ""}` : "Nothing read yet") : "Loading…"}</p></div>
         <div style={{ display: "flex", gap: 10 }}><Link className="btn-ghost" href="/app?chip=look">Find lookalikes</Link></div></div>
-      {p && !hasLoads && <div className="empty"><h3>No rate cons yet</h3><p>Connect your inbox or drop in a few PDFs and this page fills in on its own.</p><Link className="btn" href="/app/sources">Connect a source</Link></div>}
+      {p && !hasLoads && <div className="empty"><h3>No rate cons yet</h3><p>Connect your inbox or drop in a few PDFs and this page fills in on its own.</p><Link className="btn" href="/app/settings/sources">Connect a source</Link></div>}
       {hasLoads && p && (<>
         <div className="panel" style={{ borderLeft: "3px solid var(--blue)" }}><h3>What you haul</h3><p className="ph">Most carriers guess at this. Here is what your own paperwork says.</p>
           <div className="grid2"><div><div className="bars">{p.families.map((f) => <div className="bar" key={f.name}><span className="lbl">{f.name}</span><span className="track"><span className="fill" style={{ width: pct(f.pct) }}></span></span><span className="v">{f.pct}%</span></div>)}</div></div>
@@ -37,7 +37,7 @@ export default function Freight() {
         </div>
         <div className="panel"><h3>Brokers, by what they pay you</h3><p className="ph">Every broker on a rate con we have read.</p>
           <table style={{ border: "none" }}><thead><tr><th>Broker</th><th className="right">Loads</th><th className="right">$/mi</th><th className="right">Last load</th></tr></thead><tbody>{p.brokers.slice(0, 12).map((b) => <tr key={b.name} style={{ cursor: "default" }}><td className="lead">{b.name}</td><td data-label="Loads" className="num right">{b.loads}</td><td data-label="$/mi" className="num right">{b.perMile ? `$${b.perMile.toFixed(2)}` : "—"}</td><td data-label="Last load" className="num right">{b.lastAt || "—"}</td></tr>)}</tbody></table></div>
-        <div className="panel" id="loads"><div className="pane-h" style={{ marginBottom: 14 }}><div><h3>Every load</h3><p className="small">Every rate con we have read, newest first{me?.mailboxes.length ? <> &middot; <Link className="lnk" href="/app/sources">sources</Link></> : null}</p></div>
+        <div className="panel" id="loads"><div className="pane-h" style={{ marginBottom: 14 }}><div><h3>Every load</h3><p className="small">Every rate con we have read, newest first{me?.mailboxes.length ? <> &middot; <Link className="lnk" href="/app/settings/sources">sources</Link></> : null}</p></div>
             <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={exportCsv}>Export CSV</button></div></div>
           <div className="lv"><div className="lv-tools"><input className="lv-search" type="text" placeholder="Search facility, shipper, broker, lane or load number" value={q} onChange={(e) => { setQ(e.target.value); setShow(50); }} />
               <select value={st} onChange={(e) => setSt(e.target.value)} aria-label="Filter by status"><option value="all">All statuses</option><option value="ok">Resolved</option><option value="unres">Unresolved</option><option value="flag">Rate low</option></select>
@@ -48,7 +48,7 @@ export default function Freight() {
               {loads && !rows.length && <div className="lv-empty">No loads match that.</div>}</div>
             {rows.length > show && <div className="lv-more"><button className="btn-ghost" onClick={() => setShow(show + 100)}>Load {Math.min(100, rows.length - show)} more · {(rows.length - show).toLocaleString()} left</button></div>}</div></div>
       </>)}
-      <div className="panel"><h3>Add more history</h3><p className="ph">The further back you go, the better the matching gets. Seasonality especially needs a couple of years.</p><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><Link className="btn-ghost" href="/app/sources">Connect an inbox or upload rate cons</Link></div></div>
+      <p className="hint">The further back your history goes, the better the matching gets. Manage inboxes and uploads under <Link className="lnk" href="/app/settings/sources">Settings &rarr; Sources</Link>.</p>
     </>
   );
 }

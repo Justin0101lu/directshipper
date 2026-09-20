@@ -18,7 +18,7 @@ export default function Onboard() {
           <h2 style={{ fontSize: 26, letterSpacing: "-.02em", fontWeight: 600 }}>Connect the inbox your rate cons land in</h2>
           <p style={{ color: "var(--steel)", marginTop: 10, marginBottom: 28 }}>Direct Shipper reads only messages that look like rate confirmations, as far back as your mailbox goes. Your freight profile is on screen about a minute after you connect.</p>
           <MailConnect me={me} onDone={() => r.push("/app/freight")} />
-          <p className="hint" style={{ marginTop: 18 }}><Link href="/app" style={{ color: "var(--blue)" }}>Skip for now</Link> and connect later under Account &rarr; Sources.</p>
+          <p className="hint" style={{ marginTop: 18 }}><Link href="/app" style={{ color: "var(--blue)" }}>Skip for now</Link> and connect later under Settings &rarr; Sources.</p>
         </div>
       </div>
     </FlashProvider>

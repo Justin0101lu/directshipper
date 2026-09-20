@@ -29,7 +29,7 @@ export default function Outreach() {
   const run = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
     setBusy(key);
     try { await fn(); if (ok) flash(ok); await load(); refresh(); }
-    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
+    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/settings/billing"); }
     finally { setBusy(null); }
   };
   const prepare = (c: Card) => run(`prep:${c.facilityId}`, () => api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId } }), "Sequence written from your history with this dock.");
@@ -56,7 +56,7 @@ export default function Outreach() {
   function primary(c: Card) {
     const p = c.contact || c.best;
     switch (c.state) {
-      case "held": return <a className="btn-ghost" href="/app/sources#agreements">Upload the agreement</a>;
+      case "held": return <a className="btn-ghost" href="/app/settings/agreements">Upload the agreement</a>;
       case "needs_draft": return <button className="btn" disabled={busy === `prep:${c.facilityId}` || !me?.features.ai} onClick={() => prepare(c)}>{busy === `prep:${c.facilityId}` ? <><span className="spin" />Writing…</> : "Write the sequence · free"}</button>;
       case "needs_people": return <button className="btn" disabled={busy === `disc:${c.facilityId}` || !me?.features.providers.includes("peopledatalabs")} onClick={() => discover(c)} title={me?.features.providers.includes("peopledatalabs") ? "" : "Needs a People Data Labs key"}>{busy === `disc:${c.facilityId}` ? <><span className="spin" />Looking…</> : "Find contacts · free"}</button>;
       case "needs_email": return p ? <button className="btn" disabled={busy === `email:${p.id}`} onClick={() => revealEmail(c, p)}>{busy === `email:${p.id}` ? <><span className="spin" />Finding…</> : `Get ${p.name ? p.name.split(" ")[0] + "'s" : "the " + (p.title || "contact") + "'s"} email · ${p.name ? "1" : "2"} tokens`}</button> : null;
@@ -106,7 +106,7 @@ export default function Outreach() {
   return (
     <>
       <div className="pane-h"><div><h2>Outreach</h2><p>{d ? `${d.cards.filter((c) => c.hold.clear).length} of ${d.cards.length} docks have no hold on file. Sequences are written from your history with each dock; held docks are never touched.` : "Loading…"}</p></div>
-        <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
+        <div style={{ display: "flex", gap: 10 }}>{!hasMailbox && <a className="btn-ghost" href="/app/settings/sources">Connect sending mailbox</a>}<button className="btn-ghost" disabled={busy === "prep:top" || !me?.features.ai} onClick={prepareTop}>{busy === "prep:top" ? <><span className="spin" />Writing…</> : "Write my top 5"}</button></div></div>
       {me && !canSend && <div className="cbox warn" style={{ marginBottom: 18 }}><h4>Sending needs Carrier or Fleet</h4><p style={{ margin: 0 }}>Drafting, finding contacts and reading replies are free. Sends are unlimited on both paid plans.</p></div>}
       <div className="chips">{FILTERS.map(([k, label]) => <button key={k} className={`chip${filter === k ? " on" : ""}`} onClick={() => setFilter(k)}>{label}<i>{counts(k)}</i></button>)}</div>
       {d && !cards.length && <div className="empty"><h3>Nothing here yet</h3><p>{d.cards.length ? "No docks under this filter." : "Docks appear as your rate cons are read. Each one gets a sequence written from your history there."}</p></div>}

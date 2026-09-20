@@ -724,3 +724,14 @@ textarea{font-family:var(--sans);font-size:14.5px;line-height:1.5;padding:11px 1
 .hold-row{padding:10px 0;border-top:1px solid var(--rule)}
 .hold-row.expired b{color:var(--faint)}
 .clause-q{font-family:var(--mono);font-size:12px;line-height:1.55;background:var(--card);border:1px solid var(--rule);padding:10px 12px;margin:8px 0 0;white-space:pre-wrap}
+
+/* ---------- settings ---------- */
+.settings{display:grid;grid-template-columns:200px 1fr;gap:32px;align-items:start}
+.settings-nav{position:sticky;top:76px;display:flex;flex-direction:column;gap:2px}
+.settings-nav .eyebrow{margin:0 0 8px 10px}
+.settings-link{padding:8px 10px;border-radius:2px;font-size:14px;color:var(--steel)}
+.settings-link:hover{background:var(--sunk);color:var(--ink)}
+.settings-link.on{background:var(--card);color:var(--ink);font-weight:500;border:1px solid var(--rule)}
+.settings-link.back-link{margin-top:14px;font-size:13px;color:var(--faint)}
+.settings-body{min-width:0}
+@media (max-width:860px){ .settings{grid-template-columns:1fr;gap:12px} .settings-nav{position:static;flex-direction:row;flex-wrap:wrap;gap:6px} .settings-nav .eyebrow{width:100%} .settings-link.back-link{margin-top:0} }

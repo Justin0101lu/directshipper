@@ -40,7 +40,7 @@ export default function Prospects() {
   async function reveal(contactId: string, field: string) {
     setBusy(`${contactId}:${field}`);
     try { const x = await api<{ found: boolean; charged: number }>("/api/contacts/reveal", { method: "POST", json: { contactId, field } }); flash(x.found ? (x.charged ? "Found. 1 token." : "Already yours.") : "Nothing found. Nothing charged."); await load(); refresh(); }
-    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
+    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/settings/billing"); }
     finally { setBusy(null); }
   }
   async function startOutreach(contactId: string) {
@@ -56,7 +56,7 @@ export default function Prospects() {
   async function runSearch() {
     setBusy("search");
     try { const x = await api<{ revealed: number }>("/api/prospects/lookalikes", { method: "POST", json: { ...search, min: Number(search.min) } }); flash(`${x.revealed} lookalikes revealed for ${tok(x.revealed)}.`); setEst(""); await load(); refresh(); }
-    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/billing"); }
+    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/settings/billing"); }
     finally { setBusy(null); }
   }
 
@@ -132,7 +132,7 @@ export default function Prospects() {
           <div className="lv-tools"><input className="lv-search" type="text" placeholder="Search shipper, receiver, broker, lane or load number" value={q} onChange={(e) => { setQ(e.target.value); setShow(60); }} /><span className="lv-count">{d ? `${loads.length.toLocaleString()} of ${d.loads.length.toLocaleString()} · ${Math.min(show, loads.length)} shown` : ""}</span></div>
           <table style={{ border: "none" }}><thead><tr><th>Date</th><th>Shipper</th><th>Receiver</th><th>Broker</th><th>Lane</th><th>Equip</th><th className="right">Rate</th></tr></thead><tbody>
             {!d && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">Reading your loads…</td></tr>}
-            {d && !loads.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.loads.length ? "No loads match that." : "No loads yet. Connect an inbox or upload rate cons under Account → Sources."}</td></tr>}
+            {d && !loads.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.loads.length ? "No loads match that." : "No loads yet. Connect an inbox or upload rate cons under Settings → Sources."}</td></tr>}
             {loads.slice(0, show).flatMap((l) => {
               const row = (
                 <tr key={l.id} style={{ cursor: "default" }}>

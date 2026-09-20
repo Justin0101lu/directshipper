@@ -23,7 +23,7 @@ export async function checkoutPlan(accountId: string, email: string, plan: Exclu
   const s = await stripe().checkout.sessions.create({
     mode: "subscription", customer: await customerFor(accountId, email),
     line_items: [{ price, quantity: 1 }],
-    success_url: `${env.appUrl}/app/billing?ok=1`, cancel_url: `${env.appUrl}/app/billing`,
+    success_url: `${env.appUrl}/app/settings/billing?ok=1`, cancel_url: `${env.appUrl}/app/settings/billing`,
     metadata: { accountId, plan },
     subscription_data: { metadata: { accountId, plan } },
   });
@@ -38,14 +38,14 @@ export async function checkoutPack(accountId: string, email: string, n: number) 
   const s = await stripe().checkout.sessions.create({
     mode: "payment", customer: await customerFor(accountId, email),
     line_items: [{ price_data: { currency: "usd", unit_amount: Math.round(p.extra * 100), product_data: { name: "Direct Shipper tokens" } }, quantity: n }],
-    success_url: `${env.appUrl}/app/billing?ok=1`, cancel_url: `${env.appUrl}/app/billing`,
+    success_url: `${env.appUrl}/app/settings/billing?ok=1`, cancel_url: `${env.appUrl}/app/settings/billing`,
     metadata: { accountId, tokens: String(n) },
   });
   return s.url!;
 }
 
 export async function portal(accountId: string, email: string) {
-  const s = await stripe().billingPortal.sessions.create({ customer: await customerFor(accountId, email), return_url: `${env.appUrl}/app/billing` });
+  const s = await stripe().billingPortal.sessions.create({ customer: await customerFor(accountId, email), return_url: `${env.appUrl}/app/settings/billing` });
   return s.url;
 }
 

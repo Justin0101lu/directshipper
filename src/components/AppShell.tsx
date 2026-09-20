@@ -44,9 +44,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className={`menu${menu ? " open" : ""}`} onClick={(e) => e.stopPropagation()}>
                 <button className="btn-ghost menu-btn" onClick={() => setMenu(!menu)} aria-haspopup="true" aria-expanded={menu}>Account <i>&#9662;</i></button>
                 <div className="menu-list" role="menu">
-                  <Link role="menuitem" href="/app/billing" onClick={() => setMenu(false)}>Billing &amp; plan</Link>
-                  <Link role="menuitem" href="/app/sources" onClick={() => setMenu(false)}>Sources</Link>
-                  <Link role="menuitem" href="/app/sources#data" onClick={() => setMenu(false)}>Delete my data</Link>
+                  <Link role="menuitem" href="/app/settings/sources" onClick={() => setMenu(false)}>Settings</Link>
+                  <Link role="menuitem" href="/app/settings/billing" onClick={() => setMenu(false)}>Billing &amp; plan</Link>
                   <div className="menu-sep"></div>
                   <button role="menuitem" onClick={signout}>Sign out</button>
                 </div>
