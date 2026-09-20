@@ -6,32 +6,26 @@ import { claude, MODEL } from "./client";
 /* The rate con reader. One document in, one structured load out.
    Runs on PDFs (base64) and on plain text (email bodies, OCR'd scans). */
 
-export const RateConSchema = z.object({
+/* The API allows at most 16 optional (nullable/union) fields per schema, so
+   every text field is required and "" means "not on the page". Only the
+   three numbers stay nullable. toRateCon() turns "" back into null. */
+const S = z.string().describe('the value as written, or "" if not on the page');
+const Place = z.object({
+  facility: S, street: S, city: S,
+  state: z.string().describe('two-letter US state or CA province, or ""'),
+  zip: S,
+  at: z.string().describe('ISO 8601 date or datetime, or ""'),
+});
+const WireSchema = z.object({
   is_rate_confirmation: z.boolean().describe("true only if this document is a carrier rate confirmation / load tender for a truckload shipment"),
-  load_number: z.string().nullable(),
-  broker: z.object({
-    name: z.string().nullable(),
-    mc: z.string().nullable().describe("MC number digits only, no prefix"),
-    email: z.string().nullable(),
-  }),
-  shipper: z.string().nullable().describe("the company that owns the freight, if it can be told apart from the pickup facility"),
-  pickup: z.object({
-    facility: z.string().nullable(),
-    street: z.string().nullable(),
-    city: z.string().nullable(),
-    state: z.string().nullable().describe("two-letter US state or CA province"),
-    zip: z.string().nullable(),
-    at: z.string().nullable().describe("ISO 8601 date or datetime"),
-  }),
-  delivery: z.object({
-    facility: z.string().nullable(),
-    street: z.string().nullable(),
-    city: z.string().nullable(),
-    state: z.string().nullable(),
-    zip: z.string().nullable(),
-    at: z.string().nullable(),
-  }),
-  commodity: z.string().nullable(),
+  load_number: S,
+  broker_name: S,
+  broker_mc: z.string().describe('MC number digits only, no prefix, or ""'),
+  broker_email: S,
+  shipper: z.string().describe('the company that owns the freight, if it can be told apart from the pickup facility; else ""'),
+  pickup: Place,
+  delivery: Place,
+  commodity: S,
   family: z.enum(["frozen", "refrigerated", "produce", "beverage", "dry", "other", "unknown"]),
   equipment: z.enum(["reefer", "dry_van", "flatbed", "other", "unknown"]),
   temp_f: z.number().nullable(),
@@ -39,7 +33,34 @@ export const RateConSchema = z.object({
   rate_total: z.number().nullable().describe("total linehaul to the carrier in USD, including fuel if stated as all-in"),
   confidence: z.number().min(0).max(1),
 });
-export type RateCon = z.infer<typeof RateConSchema>;
+type Wire = z.infer<typeof WireSchema>;
+
+export type RateCon = {
+  is_rate_confirmation: boolean;
+  load_number: string | null;
+  broker: { name: string | null; mc: string | null; email: string | null };
+  shipper: string | null;
+  pickup: { facility: string | null; street: string | null; city: string | null; state: string | null; zip: string | null; at: string | null };
+  delivery: { facility: string | null; street: string | null; city: string | null; state: string | null; zip: string | null; at: string | null };
+  commodity: string | null;
+  family: Wire["family"];
+  equipment: Wire["equipment"];
+  temp_f: number | null;
+  miles: number | null;
+  rate_total: number | null;
+  confidence: number;
+};
+const n = (v: string) => (v && v.trim() ? v.trim() : null);
+const place = (p: Wire["pickup"]) => ({ facility: n(p.facility), street: n(p.street), city: n(p.city), state: n(p.state), zip: n(p.zip), at: n(p.at) });
+export function toRateCon(w: Wire): RateCon {
+  return {
+    is_rate_confirmation: w.is_rate_confirmation, load_number: n(w.load_number),
+    broker: { name: n(w.broker_name), mc: n(w.broker_mc), email: n(w.broker_email) },
+    shipper: n(w.shipper), pickup: place(w.pickup), delivery: place(w.delivery),
+    commodity: n(w.commodity), family: w.family, equipment: w.equipment,
+    temp_f: w.temp_f, miles: w.miles, rate_total: w.rate_total, confidence: w.confidence,
+  };
+}
 
 const SYSTEM = `You read trucking paperwork for a small carrier. Given one document, extract the fields of the rate confirmation exactly as written. Rules:
 - Broker is the party paying the carrier (the tendering company on the confirmation), never the carrier.
@@ -49,7 +70,7 @@ const SYSTEM = `You read trucking paperwork for a small carrier. Given one docum
 - Miles: as stated; do not estimate.
 - Rate total: the carrier's linehaul total. If separate fuel surcharge is stated, add it. Ignore accessorials.
 - Set is_rate_confirmation false for anything that is not a rate con or load tender (invoices, BOLs, newsletters).
-- Never invent a value. Use null when it is not on the page.`;
+- Never invent a value. Use "" for a text field and null for a number when it is not on the page.`;
 
 export async function parseRateCon(input: { pdfBase64?: string; text?: string; filename?: string }): Promise<RateCon> {
   const content: Anthropic.ContentBlockParam[] = [];
@@ -63,9 +84,9 @@ export async function parseRateCon(input: { pdfBase64?: string; text?: string; f
     model: MODEL,
     max_tokens: 4000,
     system: SYSTEM,
-    output_config: { format: zodOutputFormat(RateConSchema), effort: "medium" },
+    output_config: { format: zodOutputFormat(WireSchema), effort: "medium" },
     messages: [{ role: "user", content }],
   });
   if (!res.parsed_output) throw new Error("The reader could not make sense of that document.");
-  return res.parsed_output;
+  return toRateCon(res.parsed_output);
 }
