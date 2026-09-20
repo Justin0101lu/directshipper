@@ -7,4 +7,5 @@ export function claude() {
   return _client;
 }
 export const MODEL = env.model;
+export const PARSE_MODEL = env.parseModel;
 export const aiReady = () => env.hasAnthropic;

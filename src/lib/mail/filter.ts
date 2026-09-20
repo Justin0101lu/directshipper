@@ -8,8 +8,9 @@ export function looksLikeRateCon(subject: string, text: string, attachmentNames:
   const subj = SUBJECT.test(s);
   const bodyHits = (t.match(BODY) || []).length;
   const bodyStrong = (t.match(/rate\s*confirmation|carrier\s*rate|linehaul|consignee/gi) || []).length;
+  if (/unsubscribe|newsletter|webinar|invoice\s*(#|no|number)|remittance|payment\s+advice|statement/i.test(s + " " + t.slice(0, 1500)) && !/rate\s*con/i.test(s)) return false;
   if (pdf && (subj || bodyHits >= 2)) return true;
-  if (subj && bodyHits >= 2) return true;
+  if (subj && bodyHits >= 3) return true;
   if (bodyStrong >= 2 && bodyHits >= 5) return true;
   return false;
 }

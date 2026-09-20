@@ -18,7 +18,7 @@ export async function ingestMime(accountId: string, mailboxId: string | null, ra
   const res: IngestResult = { stored: 0, skipped: 0, errors: [] };
   const from = mail.from?.value?.[0]?.address || null;
   const docs: { pdfBase64?: string; text?: string; ref: string; filename?: string }[] = pdfs.length
-    ? pdfs.map((p, i) => ({ pdfBase64: p.content.toString("base64"), text: `Email subject: ${subject}\nFrom: ${from ?? ""}\n\n${text.slice(0, 4000)}`, ref: `${sourceRef}#${i}`, filename: p.filename || undefined }))
+    ? pdfs.slice(0, 3).map((p, i) => ({ pdfBase64: p.content.toString("base64"), text: `Subject: ${subject}\nFrom: ${from ?? ""}\n\n${text.slice(0, 1200)}`, ref: `${sourceRef}#${i}`, filename: p.filename || undefined }))
     : [{ text: `Email subject: ${subject}\nFrom: ${from ?? ""}\n\n${text}`, ref: sourceRef }];
 
   for (const d of docs) {

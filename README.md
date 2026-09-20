@@ -19,7 +19,7 @@ With no `DATABASE_URL` the app runs on an embedded Postgres (PGlite) under `.dat
 ## Deploy (Vercel + Neon, about 20 minutes, no code)
 
 1. **Database.** Create a free Postgres on Neon or Supabase. Copy the connection string into `DATABASE_URL`. Migrations run on first request.
-2. **Anthropic.** `ANTHROPIC_API_KEY` from console.anthropic.com. `CLAUDE_MODEL` defaults to `claude-opus-5`.
+2. **Anthropic.** `ANTHROPIC_API_KEY` from console.anthropic.com. Two models: `PARSE_MODEL` (default `claude-haiku-4-5`) reads rate cons as extracted text at about a fifth of a cent each, so a 2,000-load inbox is roughly $4; `CLAUDE_MODEL` (default `claude-opus-5`) does the low-volume work: drafting, reply triage, the question box. Only a scanned PDF with no text layer is sent as an image.
 3. **Stripe.** Create two recurring prices, $39/mo and $149/mo. Put their ids in `STRIPE_PRICE_CARRIER` and `STRIPE_PRICE_FLEET`. Add a webhook to `https://<your domain>/api/stripe/webhook` for `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`; put its secret in `STRIPE_WEBHOOK_SECRET`.
 4. **Contacts.** Any of `FINDYMAIL_API_KEY`, `PEOPLEDATALABS_API_KEY`, `LEADMAGIC_API_KEY`, `PROSPEO_API_KEY`, `WIZA_API_KEY`. People Data Labs is the one that finds *who* the transportation contact is; the others find emails and phones. Start with Findymail plus People Data Labs.
 5. **Forwarding address.** Point a Postmark inbound stream (or any provider posting Postmark-shaped JSON) at `https://<your domain>/api/inbound/<INBOUND_SECRET>` and set `INBOUND_DOMAIN` to the domain you receive on. Each account gets `loads-<token>@<INBOUND_DOMAIN>`.

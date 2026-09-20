@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type Anthropic from "@anthropic-ai/sdk";
-import { claude, MODEL } from "./client";
+import { claude, PARSE_MODEL } from "./client";
 
 /* The rate con reader. One document in, one structured load out.
    Runs on PDFs (base64) and on plain text (email bodies, OCR'd scans). */
@@ -78,21 +78,39 @@ const SYSTEM = `You read trucking paperwork for a small carrier. Given one docum
 - Set is_rate_confirmation false for anything that is not a rate con or load tender (invoices, BOLs, newsletters).
 - Never invent a value. Use "" for a text field and null for a number when it is not on the page.`;
 
+/* Text first. A PDF sent as a document costs ~2,000 tokens a page in images;
+   its extracted text costs a few hundred. Only a scanned PDF with no text
+   layer goes to the model as a document. */
+async function pdfText(b64: string): Promise<string> {
+  try {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: Buffer.from(b64, "base64") });
+    const r = await parser.getText();
+    await parser.destroy?.();
+    return (r.text || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  } catch { return ""; }
+}
+
 export async function parseRateCon(input: { pdfBase64?: string; text?: string; filename?: string }): Promise<RateCon> {
   const content: Anthropic.ContentBlockParam[] = [];
-  if (input.pdfBase64) {
+  let pdfAsText = "";
+  if (input.pdfBase64) pdfAsText = await pdfText(input.pdfBase64);
+  if (input.pdfBase64 && pdfAsText.length < 200) {
     content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: input.pdfBase64 } });
   }
-  if (input.text) content.push({ type: "text", text: `Document text${input.filename ? ` (${input.filename})` : ""}:\n\n${input.text.slice(0, 60_000)}` });
+  const text = [pdfAsText ? `PDF text${input.filename ? ` (${input.filename})` : ""}:\n\n${pdfAsText.slice(0, 24_000)}` : "", input.text ? `Email:\n\n${input.text.slice(0, 6_000)}` : ""].filter(Boolean).join("\n\n");
+  if (text) content.push({ type: "text", text });
   content.push({ type: "text", text: "Extract the rate confirmation." });
 
   const res = await claude().messages.parse({
-    model: MODEL,
-    max_tokens: 4000,
-    system: SYSTEM,
-    output_config: { format: zodOutputFormat(WireSchema), effort: "medium" },
+    model: PARSE_MODEL,
+    max_tokens: 2000,
+    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    output_config: { format: zodOutputFormat(WireSchema) },
     messages: [{ role: "user", content }],
   });
+  const u = res.usage;
+  console.log(`[reader] ${input.filename || "email"} in=${u.input_tokens} out=${u.output_tokens} ${pdfAsText ? "text" : input.pdfBase64 ? "scan" : "email"}`);
   if (!res.parsed_output) throw new Error("The reader could not make sense of that document.");
   return toRateCon(res.parsed_output);
 }
