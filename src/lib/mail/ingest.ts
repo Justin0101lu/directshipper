@@ -47,7 +47,7 @@ export async function ingestParts(accountId: string, mailboxId: string | null, m
       if (!rc.broker.email && m.from) rc.broker.email = m.from;
       const stored = await storeLoad(accountId, mailboxId, d.ref, rc, m.date || new Date());
       if (stored) res.stored++; else res.skipped++;
-    } catch (e) { res.errors.push(`${d.ref}: ${(e as Error).message}`); }
+    } catch (e) { console.error("[reader]", d.ref, e); res.errors.push(`${d.ref}: ${(e as Error).message}`); }
   }
   return res;
 }
@@ -58,7 +58,7 @@ export async function ingestPdf(accountId: string, mailboxId: string | null, buf
     if (!rc || !rc.is_rate_confirmation) return { stored: 0, skipped: 1, errors: [] };
     const stored = await storeLoad(accountId, mailboxId, `upload:${filename}:${buf.length}`, rc, new Date());
     return { stored: stored ? 1 : 0, skipped: stored ? 0 : 1, errors: [] };
-  } catch (e) { return { stored: 0, skipped: 0, errors: [(e as Error).message] }; }
+  } catch (e) { console.error("[reader]", filename, e); return { stored: 0, skipped: 0, errors: [(e as Error).message] }; }
 }
 
 async function readDoc(d: { pdfBase64?: string; text?: string; filename?: string }): Promise<RateCon | null> {

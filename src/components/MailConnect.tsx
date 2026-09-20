@@ -14,7 +14,9 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
     e.preventDefault(); setBusy("gmail");
     try {
       const r = await api<{ first: { stored: number; skipped: number; errors: string[] } }>("/api/mail/gmail", { method: "POST", json: { address: addr, appPassword: pw } });
-      flash(`Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}; the rest of your history fills in over the next hour.`);
+      flash(r.first.errors.length && !r.first.stored
+        ? `Connected, but reading failed: ${r.first.errors[0]}`
+        : `Connected. First pass read ${r.first.stored} rate con${r.first.stored === 1 ? "" : "s"}; the rest of your history fills in over the next hour.`, r.first.errors.length && !r.first.stored ? "err" : "ok");
       onDone?.();
     } catch (x) { flash((x as Error).message, "err"); } finally { setBusy(null); }
   }
@@ -24,7 +26,7 @@ export function MailConnect({ me, onDone, compact }: { me: { forwardAddress: str
     const fd = new FormData(); Array.from(files).forEach((f) => fd.append("files", f));
     try {
       const r = await api<{ stored: number; skipped: number; errors: string[] }>("/api/mail/upload", { method: "POST", body: fd });
-      flash(`${r.stored} rate con${r.stored === 1 ? "" : "s"} read${r.skipped ? `, ${r.skipped} skipped as not a rate con` : ""}${r.errors.length ? `, ${r.errors.length} failed` : ""}.`, r.stored ? "ok" : "err");
+      flash(`${r.stored} rate con${r.stored === 1 ? "" : "s"} read${r.skipped ? `, ${r.skipped} skipped as not a rate con` : ""}${r.errors.length ? `, ${r.errors.length} failed: ${r.errors[0]}` : ""}`, r.stored ? "ok" : "err");
       onDone?.();
     } catch (x) { flash((x as Error).message, "err"); } finally { setBusy(null); e.target.value = ""; }
   }
