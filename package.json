@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "demo": "tsx scripts/demo.ts",
+    "password": "tsx scripts/password.ts",
     "cron": "tsx scripts/cron.ts"
   },
   "dependencies": {
