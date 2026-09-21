@@ -71,6 +71,13 @@
       "when": 1789935915816,
       "tag": "0009_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790027287612,
+      "tag": "0010_sending_limits",
+      "breakpoints": true
     }
   ]
 }

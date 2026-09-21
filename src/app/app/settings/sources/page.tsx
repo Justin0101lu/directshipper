@@ -17,6 +17,9 @@ export default function Sources() {
     catch (x) { flash((x as Error).message, "err"); } finally { setBusy(false); }
   }
   const KIND: Record<string, string> = { gmail_imap: "Gmail", microsoft: "Outlook", forward: "Forwarding", upload: "Uploads" };
+  async function setSending(patch: Record<string, number>) {
+    try { await api("/api/account/settings", { method: "POST", json: patch }); flash("Sending limits saved."); refresh(); } catch (x) { flash((x as Error).message, "err"); }
+  }
   async function setIdentity(id: string, patch: { senderName?: string; authorityId?: string | null }) {
     try { await api(`/api/mail/${id}`, { method: "PATCH", json: patch }); refresh(); } catch (x) { flash((x as Error).message, "err"); }
   }
@@ -62,6 +65,14 @@ export default function Sources() {
             {me.mailboxes.filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft").map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead num">{m.address}</td>
               <td data-label="Signed as"><input type="text" defaultValue={m.senderName || ""} placeholder="Justin Ruiz, owner" onBlur={(e) => e.target.value !== (m.senderName || "") && setIdentity(m.id, { senderName: e.target.value })} style={{ padding: "7px 10px", fontSize: 14 }} /></td>
               <td data-label="Company"><select value={m.authorityId || ""} onChange={(e) => setIdentity(m.id, { authorityId: e.target.value || null })} style={{ padding: "7px 10px", fontSize: 14 }}><option value="">{me.company}</option>{me.authorities.map((a) => <option key={a.id} value={a.id}>{a.name}{a.mc ? ` · MC ${a.mc}` : ""}</option>)}</select></td></tr>)}
+          </tbody></table></div>)}
+      {me && (
+        <div className="panel"><h3>Sending limits</h3><p className="ph">The pace that keeps a cold inbox out of spam and a LinkedIn account out of restriction. Limits apply to each mailbox. Scale volume by adding mailboxes, not raising caps.</p>
+          <table style={{ border: "none", maxWidth: 640 }}><tbody>
+            <tr style={{ cursor: "default" }}><td className="lead">Emails per day</td><td className="small">Sends from your own domain. Past 20 a day, a fresh inbox starts landing in spam.</td><td className="right"><input type="number" min={1} max={50} defaultValue={me.sending.emailsPerDay} onBlur={(e) => Number(e.target.value) !== me.sending.emailsPerDay && setSending({ emailsPerDay: Number(e.target.value) })} style={{ width: 72, padding: "6px 8px", fontSize: 14 }} /></td></tr>
+            <tr style={{ cursor: "default" }}><td className="lead">Gap between sends</td><td className="small">Minutes. The real gap is random inside this range, so sends never look scheduled.</td><td className="right num" style={{ whiteSpace: "nowrap" }}><input type="number" min={1} max={60} defaultValue={me.sending.gapMin} onBlur={(e) => Number(e.target.value) !== me.sending.gapMin && setSending({ gapMin: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> – <input type="number" min={1} max={120} defaultValue={me.sending.gapMax} onBlur={(e) => Number(e.target.value) !== me.sending.gapMax && setSending({ gapMax: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> min</td></tr>
+            <tr style={{ cursor: "default" }}><td className="lead">LinkedIn invites per day</td><td className="small">LinkedIn steps are copy-only, but we only put this many connection requests on your list a day.</td><td className="right"><input type="number" min={0} max={25} defaultValue={me.sending.liInvitesPerDay} onBlur={(e) => Number(e.target.value) !== me.sending.liInvitesPerDay && setSending({ liInvitesPerDay: Number(e.target.value) })} style={{ width: 72, padding: "6px 8px", fontSize: 14 }} /></td></tr>
+            <tr style={{ cursor: "default" }}><td className="lead">LinkedIn messages per day</td><td className="small">Exceeding LinkedIn&rsquo;s safe limits can permanently restrict the account.</td><td className="right"><input type="number" min={0} max={50} defaultValue={me.sending.liDmsPerDay} onBlur={(e) => Number(e.target.value) !== me.sending.liDmsPerDay && setSending({ liDmsPerDay: Number(e.target.value) })} style={{ width: 72, padding: "6px 8px", fontSize: 14 }} /></td></tr>
           </tbody></table></div>)}
       {me && me.authorities.length > 0 && (
         <div className="panel"><h3>Your companies</h3><p className="ph">Found on your rate cons: the carrier each load was tendered to. Fix a spelling here; the MC stays.</p>

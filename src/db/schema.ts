@@ -17,7 +17,13 @@ export const accounts = pgTable("accounts", {
   dailyCap: integer("daily_cap").notNull().default(25),
   autoTopup: boolean("auto_topup").notNull().default(false),     // buy a pack on the saved card when the balance runs low
   autopilot: text("autopilot").notNull().default("draft"),   // off | draft | send
-  autoPerDay: integer("auto_per_day").notNull().default(3),  // new docks the agent may start per day in send mode
+  autoPerDay: integer("auto_per_day").notNull().default(3),  // new warehouses the agent may start per day in send mode
+  /* sending limits, applied to every mailbox: the safe pace for a cold inbox */
+  emailsPerDay: integer("emails_per_day").notNull().default(20),
+  gapMin: integer("gap_min").notNull().default(3),             // minutes between sends, lower bound
+  gapMax: integer("gap_max").notNull().default(8),             // upper bound; the actual gap is random in between
+  liInvitesPerDay: integer("li_invites_per_day").notNull().default(10),   // LinkedIn steps surfaced per day: connection requests
+  liDmsPerDay: integer("li_dms_per_day").notNull().default(20),           // and messages
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   forwardToken: text("forward_token").notNull().$defaultFn(() => crypto.randomUUID().slice(0, 8)),
@@ -58,6 +64,7 @@ export const mailboxes = pgTable("mailboxes", {
   readCount: integer("read_count").notNull().default(0), // loads stored from this mailbox
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   historyDone: boolean("history_done").notNull().default(false),
+  nextSendAt: timestamp("next_send_at", { withTimezone: true }),   // the sender waits until this before the next email from this mailbox
   status: text("status").notNull().default("ok"),
   error: text("error"),
   createdAt: now(),
@@ -231,8 +238,10 @@ export const touches = pgTable("touches", {
   channel: text("channel").notNull(),           // email | linkedin
   subject: text("subject"),
   body: text("body").notNull(),
-  status: text("status").notNull().default("draft"),   // draft | approved | sent | copied | skipped
+  status: text("status").notNull().default("draft"),   // draft | queued | sent | copied | skipped
   messageId: text("message_id"),
+  mailboxId: text("mailbox_id"),                       // which mailbox sent it (email touches)
+  queuedAt: timestamp("queued_at", { withTimezone: true }),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: now(),
 });

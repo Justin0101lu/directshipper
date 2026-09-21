@@ -24,7 +24,7 @@ With no `DATABASE_URL` the app runs on an embedded Postgres (PGlite) under `.dat
 4. **Contacts.** Any of `FINDYMAIL_API_KEY`, `PEOPLEDATALABS_API_KEY`, `LEADMAGIC_API_KEY`, `PROSPEO_API_KEY`, `WIZA_API_KEY`. People Data Labs is the one that finds *who* the transportation contact is; the others find emails and phones. Start with Findymail plus People Data Labs.
 5. **Forwarding address.** Point a Postmark inbound stream (or any provider posting Postmark-shaped JSON) at `https://<your domain>/api/inbound/<INBOUND_SECRET>` and set `INBOUND_DOMAIN` to the domain you receive on. Each account gets `loads-<token>@<INBOUND_DOMAIN>`.
 6. **Outlook (optional).** Register an app in Entra, redirect URI `https://<your domain>/api/mail/microsoft/callback`, delegated permissions `Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`. Set `MS_CLIENT_ID` / `MS_CLIENT_SECRET`. Leave empty and the Outlook button is hidden.
-7. **Cron.** `vercel.json` runs `/api/cron` every 10 minutes: reads new mail, sends due follow-ups, checks for replies. Set `CRON_SECRET`; Vercel sends it as a bearer token. Anywhere else, run `npm run cron` from a system cron.
+7. **Cron.** `vercel.json` runs `/api/cron` every 10 minutes: reads new mail, queues due follow-ups, checks for replies, and runs the paced sender once. Off Vercel the built-in scheduler also runs the sender every minute, which is what keeps the 3 to 8 minute gap between emails. On Vercel, point a second cron at `/api/cron` every minute if you want the same pacing. Set `CRON_SECRET`; Vercel sends it as a bearer token. Anywhere else, run `npm run cron` from a system cron.
 8. `APP_URL` and a long random `APP_SECRET`. The secret signs sessions and encrypts mailbox credentials at rest; changing it logs everyone out and invalidates stored app passwords.
 
 Push the folder to Vercel with the root set to `directshipper/`. Done.
@@ -44,6 +44,10 @@ Outlook removed password sign-in for IMAP, so Outlook uses Microsoft's OAuth, wh
 5. `src/lib/enrich` is the token waterfall: one token per verified field, refunded on a miss or a bounce, first provider with a hit wins.
 6. `src/lib/outreach` is a ranked list of docks from the carrier's own rate cons. `freight/relationship.ts` summarizes the history with each dock (deliveries, pickups, first and last date, weekday, inbound lanes, broker count) for free; the sequence is written from that summary, addressed to `{{first}}`, before any person is known, so the cron pre-writes the warmest docks as the scan fills in. Docks the carrier only picks up from through an active broker are excluded. Each card has one next step: find contacts (free), reveal the best-titled person's email (a token), approve the opener. Follow-ups send themselves, LinkedIn steps are copy-only, and a reply stops everything and gets a suggested answer.
 7. `src/lib/ai/ask.ts` answers a question by querying the carrier's own loads and replies through tools and citing the row ids it used. Citations the model did not actually retrieve are dropped.
+
+## Sending limits
+
+Every approved opener and due follow-up is queued, not sent. `sendQueued` in `src/lib/outreach` sends one email per mailbox at a time, waits a random gap (3 to 8 minutes by default) before the next from that mailbox, and stops at the daily count (20 by default). LinkedIn steps are copy-only, but only 10 connection requests and 20 messages a day are put on the carrier's list. All of it is per account under Settings → Sources, capped at 50 emails, 25 invites and 50 messages a day. Limits apply to each mailbox; more volume means more mailboxes.
 
 ## Tokens and plans
 

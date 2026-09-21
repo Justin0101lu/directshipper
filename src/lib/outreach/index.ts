@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { SEQUENCE, draftSequence, personalize } from "@/lib/ai/draft";
 import { triageReply } from "@/lib/ai/triage";
@@ -164,9 +164,72 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   const first = has.has("name") && c.name ? c.name.split(" ")[0] : null;
   const subject = personalize(edited?.subject ?? t.subject ?? "Your outbound freight", first, signer);
   const body = personalize(edited?.body ?? t.body, first, signer);
-  const { messageId } = await sendAs(mb.id, { to: c.email, subject, text: body });
-  await db.update(schema.touches).set({ status: "sent", subject, body, messageId, sentAt: new Date() }).where(eq(schema.touches.id, t.id));
-  await db.update(schema.sequences).set({ status: "active", step: 1, threadId: messageId, mailboxId: mb.id, nextAt: new Date(Date.now() + SEQUENCE[1].day * 86400e3) }).where(eq(schema.sequences.id, seq.id));
+  /* Queued, not sent: the paced sender takes it within minutes, keeping the mailbox
+     inside its daily limit and the gap between sends. */
+  await db.update(schema.touches).set({ status: "queued", subject, body, mailboxId: mb.id, queuedAt: new Date() }).where(eq(schema.touches.id, t.id));
+  await db.update(schema.sequences).set({ status: "active", step: 0, mailboxId: mb.id, nextAt: new Date() }).where(eq(schema.sequences.id, seq.id));
+}
+
+/* ---------- pacing ----------
+   One email per mailbox at a time, a random 3 to 8 minute gap between them (the
+   account's setting), and a hard daily count per mailbox. Runs every minute. An
+   inbox that sends 20 cold emails a day, spaced out, stays out of spam; one that
+   sends 200 in an hour is done for months. Limits apply to each mailbox: scale by
+   adding mailboxes, not raising caps. */
+const dayStart = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; };
+const minutes = (n: number) => n * 60_000;
+const gapFor = (acct: { gapMin: number; gapMax: number }) => minutes(acct.gapMin + Math.random() * Math.max(0, acct.gapMax - acct.gapMin));
+
+export async function sentTodayFrom(mailboxId: string) {
+  const db = await getDb();
+  const [r] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches)
+    .where(and(eq(schema.touches.mailboxId, mailboxId), eq(schema.touches.channel, "email"), eq(schema.touches.status, "sent"), sql`${schema.touches.sentAt} >= ${dayStart()}`));
+  return Number(r?.n || 0);
+}
+
+export async function sendQueued() {
+  const db = await getDb();
+  const boxes = await db.select().from(schema.mailboxes).where(or(eq(schema.mailboxes.kind, "gmail_imap"), eq(schema.mailboxes.kind, "microsoft")));
+  let sent = 0, waiting = 0;
+  for (const mb of boxes) {
+    if (mb.nextSendAt && mb.nextSendAt > new Date()) { waiting++; continue; }
+    const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, mb.accountId));
+    if (!acct || !PLANS[acct.plan as PlanId].outreach) continue;
+    if ((await sentTodayFrom(mb.id)) >= acct.emailsPerDay) continue;
+    const [row] = await db.select({ t: schema.touches, s: schema.sequences }).from(schema.touches)
+      .innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
+      .where(and(eq(schema.touches.status, "queued"), eq(schema.touches.channel, "email"), eq(schema.touches.mailboxId, mb.id), eq(schema.sequences.status, "active")))
+      .orderBy(asc(schema.touches.queuedAt)).limit(1);
+    if (!row) continue;
+    const { t, s } = row;
+    try {
+      if (!(await dockHolds(s.accountId, s.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, s.id)); continue; }
+      const [c] = s.contactId ? await db.select().from(schema.contacts).where(eq(schema.contacts.id, s.contactId)) : [];
+      if (!c?.email || c.emailStatus === "bounced") { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: no email to send to." }).where(eq(schema.sequences.id, s.id)); continue; }
+      const opener = t.step === 0 ? t : (await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, s.id), eq(schema.touches.step, 0))))[0];
+      const subject = t.step === 0 ? (t.subject || "Your outbound freight") : `Re: ${opener?.subject || "Your outbound freight"}`;
+      const { messageId } = await sendAs(mb.id, { to: c.email, subject, text: t.body, inReplyTo: t.step ? s.threadId || undefined : undefined, references: t.step ? s.threadId || undefined : undefined });
+      await db.update(schema.touches).set({ status: "sent", subject, messageId, sentAt: new Date() }).where(eq(schema.touches.id, t.id));
+      const next = t.step + 1;
+      const nextAt = next < SEQUENCE.length ? new Date(Date.now() + (SEQUENCE[next].day - SEQUENCE[t.step].day) * 86400e3) : null;
+      await db.update(schema.sequences).set({ step: next, nextAt, status: nextAt ? "active" : "done", ...(t.step === 0 ? { threadId: messageId } : {}) }).where(eq(schema.sequences.id, s.id));
+      await db.update(schema.mailboxes).set({ nextSendAt: new Date(Date.now() + gapFor(acct)) }).where(eq(schema.mailboxes.id, mb.id));
+      sent++;
+    } catch (e) {
+      await db.update(schema.sequences).set({ status: "paused", suggested: `Paused: ${(e as Error).message}` }).where(eq(schema.sequences.id, s.id));
+    }
+  }
+  return { sent, waiting };
+}
+
+/* LinkedIn is copy-only, but surfacing 40 "paste this" steps in a morning gets the
+   account restricted just the same. Count what was surfaced today per account. */
+async function linkedinSurfacedToday(accountId: string, step: number) {
+  const db = await getDb();
+  const [r] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches)
+    .innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
+    .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.channel, "linkedin"), eq(schema.touches.step, step), sql`${schema.touches.queuedAt} >= ${dayStart()}`));
+  return Number(r?.n || 0);
 }
 
 export async function pause(accountId: string, sequenceId: string, on: boolean) {
@@ -195,15 +258,19 @@ export async function runDueSteps() {
       const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, seq.accountId));
       const signer = await signerOf(mbx, acct.company);
       if (t.channel === "email") {
+        if (t.status === "queued" || t.status === "sent") continue;                 // the paced sender owns it now
         const mb = mbx;
         if (!mb || !c.email || c.emailStatus === "bounced") { await db.update(schema.sequences).set({ status: "paused" }).where(eq(schema.sequences.id, seq.id)); continue; }
-        const [opener] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, 0)));
-        const body = personalize(t.body, first, signer);
-        const { messageId } = await sendAs(mb.id, { to: c.email, subject: `Re: ${opener.subject}`, text: body, inReplyTo: seq.threadId || undefined, references: seq.threadId || undefined });
-        await db.update(schema.touches).set({ status: "sent", body, messageId, sentAt: new Date() }).where(eq(schema.touches.id, t.id));
+        await db.update(schema.touches).set({ status: "queued", body: personalize(t.body, first, signer), mailboxId: mb.id, queuedAt: new Date() }).where(eq(schema.touches.id, t.id));
+        if (!fresh.mailboxId) await db.update(schema.sequences).set({ mailboxId: mb.id }).where(eq(schema.sequences.id, seq.id));
         sent++;
+        continue;                                                                   // the sequence advances when it actually goes out
       } else {
-        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer) }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
+        if (t.status === "copied") continue;                                        // already on the carrier's list
+        const isInvite = /connect/i.test(SEQUENCE[step].name);
+        const cap = isInvite ? acct.liInvitesPerDay : acct.liDmsPerDay;
+        if ((await linkedinSurfacedToday(seq.accountId, step)) >= cap) continue;      // over today's LinkedIn pace; try tomorrow
+        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer), queuedAt: new Date() }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
       }
       const next = step + 1;
       const nextAt = next < SEQUENCE.length ? new Date(Date.now() + (SEQUENCE[next].day - SEQUENCE[step].day) * 86400e3) : null;
@@ -267,7 +334,7 @@ export type Card = {
   facilityId: string; name: string; city: string; rel: Relationship | null; summary: string;
   sequence: (typeof schema.sequences.$inferSelect & { touches: (typeof schema.touches.$inferSelect)[] }) | null;
   people: Visible[]; best: Visible | null; contact: Visible | null; hold: DockHold;
-  state: "held" | "needs_draft" | "needs_people" | "needs_email" | "ready" | "active" | "copy" | "replied" | "paused" | "done";
+  state: "held" | "needs_draft" | "needs_people" | "needs_email" | "ready" | "queued" | "active" | "copy" | "replied" | "paused" | "done";
 };
 export async function cards(accountId: string): Promise<Card[]> {
   const db = await getDb();
@@ -294,7 +361,7 @@ export async function cards(accountId: string): Promise<Card[]> {
       if (s.status === "replied") state = "replied";
       else if (s.status === "paused") state = "paused";
       else if (s.status === "done") state = "done";
-      else if (s.status === "active") state = touchesAll.find((t) => t.sequenceId === s.id && t.step === s.step)?.status === "copied" ? "copy" : "active";
+      else if (s.status === "active") { const cur = touchesAll.find((t) => t.sequenceId === s.id && t.step === s.step)?.status; state = cur === "copied" ? "copy" : cur === "queued" ? "queued" : "active"; }
       else if (!ps.length) state = "needs_people";
       else if (!contact?.email && !(best && best.email)) state = "needs_email";
       else state = "ready";
@@ -302,7 +369,7 @@ export async function cards(accountId: string): Promise<Card[]> {
     out.push({ facilityId: fid, name: f.name, city: `${f.city}, ${f.state}`, rel, summary: s?.summary || (rel ? relationshipLine(rel) : ""),
       sequence: s ? { ...s, touches: touchesAll.filter((t) => t.sequenceId === s.id) } : null, people: ps, best, contact, hold, state });
   }
-  const order: Record<Card["state"], number> = { replied: 0, ready: 1, copy: 2, needs_email: 3, needs_people: 4, needs_draft: 5, active: 6, paused: 7, held: 8, done: 9 };
+  const order: Record<Card["state"], number> = { replied: 0, ready: 1, copy: 2, needs_email: 3, needs_people: 4, needs_draft: 5, queued: 6, active: 7, paused: 8, held: 9, done: 10 };
   return out.sort((a, b) => order[a.state] - order[b.state] || (b.rel?.warmth ?? 0) - (a.rel?.warmth ?? 0));
 }
 
@@ -323,7 +390,7 @@ export async function autopilotTick(accountId: string) {
   if (!mb) return { started: 0, reason: "no mailbox" };
   const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
   const [today] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches).innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
-    .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.step, 0), eq(schema.touches.status, "sent"), sql`${schema.touches.sentAt} >= ${dayStart}`));
+    .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.step, 0), inArray(schema.touches.status, ["sent", "queued"]), sql`coalesce(${schema.touches.sentAt}, ${schema.touches.queuedAt}) >= ${dayStart}`));
   let budget = Math.min(acct.autoPerDay, PLANS[acct.plan as PlanId].perDay) - Number(today?.n || 0);
   if (budget <= 0) return { started: 0, reason: "daily limit" };
   const { discover, reveal, visibleContacts } = await import("@/lib/enrich");

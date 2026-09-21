@@ -14,7 +14,7 @@ type Card = { facilityId: string; name: string; city: string; rel: Rel | null; s
 type Data = { cards: Card[]; sequence: { day: number; channel: string; name: string; approve: boolean }[] };
 
 const LABEL: Record<string, [string, string]> = { interested: ["INTERESTED", "t-ver"], send_paperwork: ["SEND PAPERWORK", "t-ver"], not_now: ["NOT NOW", "t-inf"], wrong_person: ["WRONG PERSON", "t-inf"], unsubscribe: ["UNSUBSCRIBE", "t-flag"], unclear: ["REPLIED", "t-obs"] };
-const STATE: Record<string, [string, string]> = { held: ["ON HOLD", "t-flag"], replied: ["REPLIED", "t-ver"], ready: ["READY TO SEND", "t-ver"], copy: ["PASTE TO LINKEDIN", "t-obs"], needs_email: ["NEEDS AN EMAIL", "t-obs"], needs_people: ["NEEDS A CONTACT", "t-obs"], needs_draft: ["NOT DRAFTED YET", "t-inf"], active: ["RUNNING", "t-ver"], paused: ["PAUSED", "t-inf"], done: ["DONE", "t-inf"] };
+const STATE: Record<string, [string, string]> = { held: ["ON HOLD", "t-flag"], replied: ["REPLIED", "t-ver"], ready: ["READY TO SEND", "t-ver"], queued: ["SENDING SOON", "t-ver"], copy: ["PASTE TO LINKEDIN", "t-obs"], needs_email: ["NEEDS AN EMAIL", "t-obs"], needs_people: ["NEEDS A CONTACT", "t-obs"], needs_draft: ["NOT DRAFTED YET", "t-inf"], active: ["RUNNING", "t-ver"], paused: ["PAUSED", "t-inf"], done: ["DONE", "t-inf"] };
 const FILTERS = [["all", "All"], ["todo", "Needs you"], ["active", "Running"], ["replied", "Replied"], ["held", "On hold"], ["done", "Done"]] as const;
 
 export default function Outreach() {
@@ -42,7 +42,7 @@ export default function Outreach() {
     if (c.sequence) await api("/api/outreach/attach", { method: "POST", json: { sequenceId: c.sequence.id, contactId: p.id } });
     else await api("/api/outreach/start", { method: "POST", json: { facilityId: c.facilityId, contactId: p.id } });
   }, "Email found and attached. Approve the opener when you are ready.");
-  const approve = (c: Card) => run(`send:${c.facilityId}`, () => api("/api/outreach/approve", { method: "POST", json: { sequenceId: c.sequence!.id, subject: edit?.subject, body: edit?.body } }), "Sent as you. Follow-ups are scheduled and stop the moment they reply.");
+  const approve = (c: Card) => run(`send:${c.facilityId}`, () => api("/api/outreach/approve", { method: "POST", json: { sequenceId: c.sequence!.id, subject: edit?.subject, body: edit?.body } }), "Approved. It goes out within minutes, spaced from your other sends to protect your inbox. Follow-ups are scheduled and stop the moment they reply.");
   const sendReply = (c: Card) => run(`reply:${c.facilityId}`, () => api("/api/outreach/reply", { method: "POST", json: { sequenceId: c.sequence!.id, body: edit?.body ?? c.sequence!.suggested } }), "Reply sent as you.");
   const copied = (t: Touch) => run(`copy:${t.id}`, async () => { navigator.clipboard?.writeText(t.body); await api("/api/outreach/copied", { method: "POST", json: { touchId: t.id } }); }, "Copied. Paste it into LinkedIn; the step is marked done.");
   const setSender = (c: Card, mailboxId: string) => run(`sender:${c.facilityId}`, () => api("/api/outreach/sender", { method: "POST", json: { sequenceId: c.sequence!.id, mailboxId } }), "Sender set.");
@@ -50,8 +50,8 @@ export default function Outreach() {
   const setAuto = (autopilot: string, autoPerDay?: number) => run("auto", () => api("/api/account/settings", { method: "POST", json: { autopilot, autoPerDay } }), autopilot === "send" ? "Autopilot on. It reaches out to new shippers every day inside your limits; you will see replies here." : autopilot === "draft" ? "Drafting only. Nothing sends until you approve." : "Autopilot off.");
   const pause = (c: Card, on: boolean) => run(`pause:${c.facilityId}`, () => api("/api/outreach/pause", { method: "POST", json: { sequenceId: c.sequence!.id, on } }), on ? "Paused." : "Resumed.");
 
-  const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "held" ? c.state === "held" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "paused"].includes(c.state) : c.state === filter);
-  const counts = (k: string) => (d?.cards || []).filter((c) => k === "all" ? c.state !== "done" : k === "held" ? c.state === "held" : k === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : k === "active" ? ["active", "paused"].includes(c.state) : c.state === k).length;
+  const cards = (d?.cards || []).filter((c) => filter === "all" ? c.state !== "done" : filter === "held" ? c.state === "held" : filter === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : filter === "active" ? ["active", "queued", "paused"].includes(c.state) : c.state === filter);
+  const counts = (k: string) => (d?.cards || []).filter((c) => k === "all" ? c.state !== "done" : k === "held" ? c.state === "held" : k === "todo" ? ["replied", "ready", "copy", "needs_email", "needs_people", "needs_draft"].includes(c.state) : k === "active" ? ["active", "queued", "paused"].includes(c.state) : c.state === k).length;
 
   /* The one button each card needs next. */
   function primary(c: Card) {
@@ -64,7 +64,7 @@ export default function Outreach() {
       case "ready": return <button className="btn" disabled={busy === `send:${c.facilityId}` || !canSend || !hasMailbox} onClick={() => { setOpen(c.facilityId); setStep(0); approve(c); }}>{busy === `send:${c.facilityId}` ? <><span className="spin" />Sending…</> : "Approve & send opener"}</button>;
       case "replied": return c.sequence?.suggested ? <button className="btn" disabled={busy === `reply:${c.facilityId}` || !canSend} onClick={() => sendReply(c)}>{busy === `reply:${c.facilityId}` ? <><span className="spin" />Sending…</> : "Send suggested reply"}</button> : <button className="btn-ghost" onClick={() => setOpen(c.facilityId)}>Read reply</button>;
       case "copy": { const t = c.sequence?.touches.find((x) => x.step === c.sequence!.step); return t ? <button className="btn" onClick={() => copied(t)}>Copy LinkedIn note</button> : null; }
-      case "active": return <button className="btn-ghost" onClick={() => pause(c, true)}>Pause</button>;
+      case "active": case "queued": return <button className="btn-ghost" onClick={() => pause(c, true)}>Pause</button>;
       case "paused": return <button className="btn-ghost" onClick={() => pause(c, false)}>Resume</button>;
       default: return null;
     }
@@ -86,7 +86,7 @@ export default function Outreach() {
         </>) : (<>
           <div className="chan-tabs">{s.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === step ? " on" : ""}`} onClick={() => { setStep(t.step); setEdit(null); }}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "linkedin" ? " · copy" : ""}{t.status === "sent" ? " ✓" : ""}</button>)}</div>
           {touch && (<>
-            <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? "copy into LinkedIn" : touch.step === 0 ? (touch.status === "sent" ? "sent" : "needs your approval") : touch.status === "sent" ? "sent" : `sends itself on day ${d?.sequence[touch.step]?.day}`}</div>
+            <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? "copy into LinkedIn" : touch.step === 0 ? (touch.status === "sent" ? "sent" : touch.status === "queued" ? "approved, sending soon" : "needs your approval") : touch.status === "sent" ? "sent" : `sends itself on day ${d?.sequence[touch.step]?.day}`}</div>
             {edit && touch.step === 0 && touch.status !== "sent" ? <><input type="text" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} style={{ marginBottom: 8 }} /><textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /></>
               : <div className="draft">{touch.subject && touch.channel === "email" && <div className="draft-sub">Subject: {show(touch.subject)}</div>}{show(touch.body).split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
             <div className="seq-actions">
@@ -142,7 +142,7 @@ export default function Outreach() {
           </div>
         );
       })}
-      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>How a sequence runs</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · you approve the opener, email follow-ups send themselves, LinkedIn is copy-only, everything stops on a reply` : ""}</span></summary>
+      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>How a sequence runs</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · you approve the opener, email follow-ups send themselves, LinkedIn is copy-only, everything stops on a reply. Sends are paced: ${me?.sending.emailsPerDay ?? 20} a day per inbox, ${me?.sending.gapMin ?? 3} to ${me?.sending.gapMax ?? 8} minutes apart` : ""}</span></summary>
         <div className="fold-body"><ol className="seq">{d?.sequence.map((s, i) => <li className="seq-step" key={i}><div className="seq-when">Day {s.day}</div><div className="seq-body"><b>{s.name}</b> <span className="seq-ch">{s.channel === "email" ? "Email" : "LinkedIn"}</span> {s.approve ? <span className="tag t-obs">YOU APPROVE</span> : s.channel === "linkedin" ? <span className="tag t-inf">COPY</span> : <span className="tag t-ver">AUTO</span>}</div></li>)}</ol></div></details>
     </>
   );

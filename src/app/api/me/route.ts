@@ -18,6 +18,7 @@ export const GET = withSession(async (_req, s) => {
   return json({
     email: s.email, company: a.company, plan: a.plan, tokens: b, autopilot: a.autopilot, autoPerDay: a.autoPerDay,
     limits: (({ outreach, agreements, inboxes, perDay, name }) => ({ outreach, agreements, inboxes, perDay, planName: name }))(PLANS[a.plan as PlanId] || PLANS.free),
+    sending: { emailsPerDay: a.emailsPerDay, gapMin: a.gapMin, gapMax: a.gapMax, liInvitesPerDay: a.liInvitesPerDay, liDmsPerDay: a.liDmsPerDay },
     authorities: authorities.sort((x, y) => y.loads - x.loads).map((x) => ({ id: x.id, name: x.name, mc: x.mc, loads: x.loads })),
     mailboxes: mailboxes.map((m) => ({ id: m.id, kind: m.kind, address: m.address, senderName: m.senderName, authorityId: m.authorityId, status: m.status, error: m.error, lastSyncAt: m.lastSyncAt, historyDone: m.historyDone, queued: m.queued, readCount: m.readCount })),
     forwardAddress: `loads-${a.forwardToken}@${env.inbound.domain}`,

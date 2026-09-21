@@ -4,8 +4,15 @@ import { body, fail, json, withSession } from "@/lib/api";
 import { PLANS, type PlanId } from "@/lib/plans";
 /* Autopilot dial and its daily limit. */
 export const POST = withSession(async (req, s) => {
-  const b = await body<{ autopilot?: string; autoPerDay?: number }>(req);
   const patch: Partial<typeof schema.accounts.$inferInsert> = {};
+  const b = await body<{ autopilot?: string; autoPerDay?: number; emailsPerDay?: number; gapMin?: number; gapMax?: number; liInvitesPerDay?: number; liDmsPerDay?: number }>(req);
+  const clamp = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+  if (b.emailsPerDay !== undefined) patch.emailsPerDay = clamp(b.emailsPerDay, 1, 50);        // past 50 a day a cold inbox burns
+  if (b.gapMin !== undefined) patch.gapMin = clamp(b.gapMin, 1, 60);
+  if (b.gapMax !== undefined) patch.gapMax = clamp(b.gapMax, 1, 120);
+  if (patch.gapMin !== undefined && patch.gapMax !== undefined && patch.gapMax < patch.gapMin) patch.gapMax = patch.gapMin;
+  if (b.liInvitesPerDay !== undefined) patch.liInvitesPerDay = clamp(b.liInvitesPerDay, 0, 25);   // LinkedIn restricts accounts past this
+  if (b.liDmsPerDay !== undefined) patch.liDmsPerDay = clamp(b.liDmsPerDay, 0, 50);
   if (b.autopilot !== undefined) { if (!["off", "draft", "send"].includes(b.autopilot)) return fail("autopilot must be off, draft or send"); patch.autopilot = b.autopilot; }
   const db = await getDb();
   const [a] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, s.aid));
