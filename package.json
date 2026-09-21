@@ -12,6 +12,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "demo": "tsx scripts/demo.ts",
     "password": "tsx scripts/password.ts",
+    "users": "tsx scripts/users.ts",
     "cron": "tsx scripts/cron.ts"
   },
   "dependencies": {
