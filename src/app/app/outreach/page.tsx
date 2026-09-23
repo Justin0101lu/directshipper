@@ -19,7 +19,6 @@ const FILTERS = [["all", "All"], ["todo", "Needs you"], ["active", "Running"], [
 
 export default function Outreach() {
   const { me, refresh } = useMe(); const { flash } = useFlash(); const r = useRouter();
-  const liAuto = !!(me?.features.linkedin && me.sending.liAuto && me.mailboxes.some((x) => x.linkedin?.status === "ok"));
   const [d, setD] = useState<Data | null>(null); const [open, setOpen] = useState<string | null>(null); const [step, setStep] = useState(0);
   const [edit, setEdit] = useState<{ subject: string; body: string } | null>(null); const [busy, setBusy] = useState<string | null>(null); const [filter, setFilter] = useState<string>("all");
   const load = useCallback(() => api<Data>("/api/outreach").then(setD).catch((e) => flash(e.message, "err")), [flash]);
@@ -85,13 +84,13 @@ export default function Outreach() {
           {edit ? <textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /> : <div className="draft">{s.suggested.split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
           <div className="seq-actions"><button className="btn" onClick={() => sendReply(c)} disabled={!canSend || busy === `reply:${c.facilityId}`}>Send as you</button><button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: "", body: s.suggested! })}>{edit ? "Cancel edit" : "Edit"}</button></div>
         </>) : (<>
-          <div className="chan-tabs">{s.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === step ? " on" : ""}`} onClick={() => { setStep(t.step); setEdit(null); }}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "linkedin" && !liAuto ? " · copy" : ""}{t.status === "sent" ? " ✓" : t.status === "skipped" ? " –" : ""}</button>)}</div>
+          <div className="chan-tabs">{s.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === step ? " on" : ""}`} onClick={() => { setStep(t.step); setEdit(null); }}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "linkedin" ? " · copy" : ""}{t.status === "sent" ? " ✓" : ""}</button>)}</div>
           {touch && (<>
-            <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? (touch.status === "sent" ? "sent on LinkedIn" : touch.status === "skipped" ? "skipped, already connected" : touch.status === "queued" ? "sending on LinkedIn soon" : liAuto ? "goes out on LinkedIn by itself" : "copy into LinkedIn") : touch.step === 0 ? (touch.status === "sent" ? "sent" : touch.status === "queued" ? "approved, sending soon" : "needs your approval") : touch.status === "sent" ? "sent" : `sends itself on day ${d?.sequence[touch.step]?.day}`}</div>
+            <div className="draft-label">{d?.sequence[touch.step]?.name} · {touch.channel === "linkedin" ? "copy into LinkedIn" : touch.step === 0 ? (touch.status === "sent" ? "sent" : touch.status === "queued" ? "approved, sending soon" : "needs your approval") : touch.status === "sent" ? "sent" : `sends itself on day ${d?.sequence[touch.step]?.day}`}</div>
             {edit && touch.step === 0 && touch.status !== "sent" ? <><input type="text" value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} style={{ marginBottom: 8 }} /><textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /></>
               : <div className="draft">{touch.subject && touch.channel === "email" && <div className="draft-sub">Subject: {show(touch.subject)}</div>}{show(touch.body).split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
             <div className="seq-actions">
-              {touch.channel === "linkedin" && !["sent", "skipped", "queued"].includes(touch.status) ? <button className="btn-ghost" onClick={() => copied(touch)}>Copy note</button> : null}
+              {touch.channel === "linkedin" && touch.status !== "sent" ? <button className="btn-ghost" onClick={() => copied(touch)}>Copy note</button> : null}
               {touch.step === 0 && s.status === "draft" ? <button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: show(touch.subject || ""), body: show(touch.body) })}>{edit ? "Cancel edit" : "Edit opener"}</button> : null}
               {!c.contact && <span className="hint" style={{ margin: 0 }}>Written to the transportation contact; the first name fills in when you pick a person.</span>}
               {senders.length > 1 && s.status === "draft" && <label className="small" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>Send from <select value={s.mailboxId || senders[0].id} onChange={(e) => setSender(c, e.target.value)} style={{ width: "auto", padding: "5px 8px", fontSize: 13 }}>{senders.map((m) => <option key={m.id} value={m.id}>{m.senderName ? `${m.senderName} · ${m.address}` : m.address}</option>)}</select></label>}
@@ -143,8 +142,8 @@ export default function Outreach() {
           </div>
         );
       })}
-      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>How a sequence runs</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · you approve the opener, email follow-ups send themselves, LinkedIn steps ${liAuto ? "go out on the connected LinkedIn account" : "are copy-only"}, everything stops on a reply. Sends are paced: ${me?.sending.emailsPerDay ?? 20} a day per inbox, ${me?.sending.gapMin ?? 3} to ${me?.sending.gapMax ?? 8} minutes apart` : ""}</span></summary>
-        <div className="fold-body"><ol className="seq">{d?.sequence.map((s, i) => <li className="seq-step" key={i}><div className="seq-when">Day {s.day}</div><div className="seq-body"><b>{s.name}</b> <span className="seq-ch">{s.channel === "email" ? "Email" : "LinkedIn"}</span> {s.approve ? <span className="tag t-obs">YOU APPROVE</span> : s.channel === "linkedin" ? <span className={`tag ${liAuto ? "t-ver" : "t-inf"}`}>{liAuto ? "AUTO" : "COPY"}</span> : <span className="tag t-ver">AUTO</span>}</div></li>)}</ol></div></details>
+      <details className="panel fold" style={{ marginTop: 20 }}><summary><h3>How a sequence runs</h3><span className="hint" style={{ margin: 0 }}>{d ? `${d.sequence.length} touches over ${d.sequence[d.sequence.length - 1].day} days · you approve the opener, email follow-ups send themselves, LinkedIn is copy-only, everything stops on a reply. Sends are paced: ${me?.sending.emailsPerDay ?? 20} a day per inbox, ${me?.sending.gapMin ?? 3} to ${me?.sending.gapMax ?? 8} minutes apart` : ""}</span></summary>
+        <div className="fold-body"><ol className="seq">{d?.sequence.map((s, i) => <li className="seq-step" key={i}><div className="seq-when">Day {s.day}</div><div className="seq-body"><b>{s.name}</b> <span className="seq-ch">{s.channel === "email" ? "Email" : "LinkedIn"}</span> {s.approve ? <span className="tag t-obs">YOU APPROVE</span> : s.channel === "linkedin" ? <span className="tag t-inf">COPY</span> : <span className="tag t-ver">AUTO</span>}</div></li>)}</ol></div></details>
     </>
   );
 }

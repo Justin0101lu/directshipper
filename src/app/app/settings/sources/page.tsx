@@ -17,19 +17,8 @@ export default function Sources() {
     catch (x) { flash((x as Error).message, "err"); } finally { setBusy(false); }
   }
   const KIND: Record<string, string> = { gmail_imap: "Gmail", microsoft: "Outlook", forward: "Forwarding", upload: "Uploads" };
-  async function setSendingBool(patch: Record<string, boolean>) {
-    try { await api("/api/account/settings", { method: "POST", json: patch }); flash("Saved."); refresh(); } catch (x) { flash((x as Error).message, "err"); }
-  }
   async function setSending(patch: Record<string, number>) {
     try { await api("/api/account/settings", { method: "POST", json: patch }); flash("Sending limits saved."); refresh(); } catch (x) { flash((x as Error).message, "err"); }
-  }
-  async function connectLinkedin(mailboxId: string) {
-    try { const { url } = await api<{ url: string }>("/api/linkedin/connect", { method: "POST", json: { mailboxId } }); location.href = url; }
-    catch (x) { flash((x as Error).message, "err"); }
-  }
-  async function disconnectLinkedin(mailboxId: string) {
-    if (!confirm("Disconnect this LinkedIn account? LinkedIn steps go back to copy-and-paste.")) return;
-    await api(`/api/linkedin/${mailboxId}`, { method: "DELETE" }); flash("LinkedIn disconnected."); refresh();
   }
   async function setIdentity(id: string, patch: { senderName?: string; authorityId?: string | null }) {
     try { await api(`/api/mail/${id}`, { method: "PATCH", json: patch }); refresh(); } catch (x) { flash((x as Error).message, "err"); }
@@ -54,8 +43,6 @@ export default function Sources() {
   };
   return (
     <>
-      {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("li") === "ok" && <p className="hint" style={{ color: "var(--green, #1a7f4b)" }}>LinkedIn connected. Connection requests and messages in your sequences now go out on their own, at the pace set below.</p>}
-      {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("li") === "err" && <p className="hint" style={{ color: "var(--red)" }}>LinkedIn login did not finish. Try again; if LinkedIn asked for a code, complete it on the login page and come back.</p>}
       {typeof window !== "undefined" && new URLSearchParams(window.location.search).get("err") === "inboxes" && me && <p className="hint" style={{ color: "var(--red)" }}>{me.limits.planName} allows {me.limits.inboxes} connected inbox{me.limits.inboxes === 1 ? "" : "es"}. Remove one, or <Link href="/app/settings/billing" style={{ color: "var(--blue)" }}>move up a plan</Link> for more.</p>}
       <div className="pane-h"><div><h2>Sources</h2><p>Where your loads come in from</p></div>
         <div style={{ display: "flex", gap: 10 }}><button className="btn-ghost" onClick={scan} disabled={busy || !me?.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft")}>{busy ? <><span className="spin" />Scanning…</> : "Scan now"}</button></div></div>
@@ -74,13 +61,11 @@ export default function Sources() {
       )}
       {me && me.mailboxes.some((m) => m.kind === "gmail_imap" || m.kind === "microsoft") && (
         <div className="panel"><h3>Who sends outreach</h3><p className="ph">Each sending mailbox speaks for one person and one of your companies. Outreach from it is signed that way, and every sequence picks its sender. Holds are account-wide: switching companies never clears a held warehouse.</p>
-          <table style={{ border: "none" }}><thead><tr><th>Mailbox</th><th>Signed as</th><th>Company</th><th>LinkedIn</th></tr></thead><tbody>
+          <table style={{ border: "none" }}><thead><tr><th>Mailbox</th><th>Signed as</th><th>Company</th></tr></thead><tbody>
             {me.mailboxes.filter((m) => m.kind === "gmail_imap" || m.kind === "microsoft").map((m) => <tr key={m.id} style={{ cursor: "default" }}><td className="lead num">{m.address}</td>
               <td data-label="Signed as"><input type="text" defaultValue={m.senderName || ""} placeholder="Justin Ruiz, owner" onBlur={(e) => e.target.value !== (m.senderName || "") && setIdentity(m.id, { senderName: e.target.value })} style={{ padding: "7px 10px", fontSize: 14 }} /></td>
-              <td data-label="Company"><select value={m.authorityId || ""} onChange={(e) => setIdentity(m.id, { authorityId: e.target.value || null })} style={{ padding: "7px 10px", fontSize: 14 }}><option value="">{me.company}</option>{me.authorities.map((a) => <option key={a.id} value={a.id}>{a.name}{a.mc ? ` · MC ${a.mc}` : ""}</option>)}</select></td>
-              <td data-label="LinkedIn">{!me.features.linkedin ? <span className="small">Not set up on this server</span> : m.linkedin ? <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>{m.linkedin.status === "ok" ? <span className="tag t-ver">CONNECTED</span> : <span className="tag t-flag" title="LinkedIn asked for a fresh login">NEEDS LOGIN</span>}<span className="small num">{m.linkedin.name || ""}</span>{m.linkedin.status !== "ok" && <button className="btn-ghost" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => connectLinkedin(m.id)}>Log in again</button>}<button className="btn-ghost" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => disconnectLinkedin(m.id)}>Disconnect</button></span> : <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => connectLinkedin(m.id)} disabled={!me.limits.outreach} title={me.limits.outreach ? "Connect this person's LinkedIn so invites and messages go out on their own" : "LinkedIn automation is on Carrier and up"}>Connect LinkedIn</button>}</td></tr>)}
-          </tbody></table>
-          <p className="hint">With LinkedIn connected, connection requests and messages in a sequence go out on that person&rsquo;s account by themselves, at the pace below. Without it, they wait on the Outreach page for you to paste. Either way a LinkedIn reply stops the sequence.</p></div>)}
+              <td data-label="Company"><select value={m.authorityId || ""} onChange={(e) => setIdentity(m.id, { authorityId: e.target.value || null })} style={{ padding: "7px 10px", fontSize: 14 }}><option value="">{me.company}</option>{me.authorities.map((a) => <option key={a.id} value={a.id}>{a.name}{a.mc ? ` · MC ${a.mc}` : ""}</option>)}</select></td></tr>)}
+          </tbody></table></div>)}
       {me && (
         <div className="panel"><h3>Sending limits</h3><p className="ph">The pace that keeps a cold inbox out of spam and a LinkedIn account out of restriction. Limits apply to each mailbox. Scale volume by adding mailboxes, not raising caps.</p>
           <table style={{ border: "none", maxWidth: 640 }}><tbody>
@@ -88,8 +73,6 @@ export default function Sources() {
             <tr style={{ cursor: "default" }}><td className="lead">Gap between sends</td><td className="small">Minutes. The real gap is random inside this range, so sends never look scheduled.</td><td className="right num" style={{ whiteSpace: "nowrap" }}><input type="number" min={1} max={60} defaultValue={me.sending.gapMin} onBlur={(e) => Number(e.target.value) !== me.sending.gapMin && setSending({ gapMin: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> – <input type="number" min={1} max={120} defaultValue={me.sending.gapMax} onBlur={(e) => Number(e.target.value) !== me.sending.gapMax && setSending({ gapMax: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> min</td></tr>
             <tr style={{ cursor: "default" }}><td className="lead">LinkedIn invites per day</td><td className="small">LinkedIn steps are copy-only, but we only put this many connection requests on your list a day.</td><td className="right"><input type="number" min={0} max={25} defaultValue={me.sending.liInvitesPerDay} onBlur={(e) => Number(e.target.value) !== me.sending.liInvitesPerDay && setSending({ liInvitesPerDay: Number(e.target.value) })} style={{ width: 72, padding: "6px 8px", fontSize: 14 }} /></td></tr>
             <tr style={{ cursor: "default" }}><td className="lead">LinkedIn messages per day</td><td className="small">Exceeding LinkedIn&rsquo;s safe limits can permanently restrict the account.</td><td className="right"><input type="number" min={0} max={50} defaultValue={me.sending.liDmsPerDay} onBlur={(e) => Number(e.target.value) !== me.sending.liDmsPerDay && setSending({ liDmsPerDay: Number(e.target.value) })} style={{ width: 72, padding: "6px 8px", fontSize: 14 }} /></td></tr>
-            <tr style={{ cursor: "default" }}><td className="lead">Gap between LinkedIn actions</td><td className="small">Minutes between one invite or message and the next on the same account.</td><td className="right num" style={{ whiteSpace: "nowrap" }}><input type="number" min={1} max={60} defaultValue={me.sending.liGapMin} onBlur={(e) => Number(e.target.value) !== me.sending.liGapMin && setSending({ liGapMin: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> – <input type="number" min={1} max={120} defaultValue={me.sending.liGapMax} onBlur={(e) => Number(e.target.value) !== me.sending.liGapMax && setSending({ liGapMax: Number(e.target.value) })} style={{ width: 56, padding: "6px 8px", fontSize: 14 }} /> min</td></tr>
-            <tr style={{ cursor: "default" }}><td className="lead">LinkedIn steps</td><td className="small">Automatic when an account is connected. Switch off to keep every LinkedIn step copy-and-paste.</td><td className="right"><label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}><input type="checkbox" checked={me.sending.liAuto} onChange={(e) => setSendingBool({ liAuto: e.target.checked })} /><span className="small">automatic</span></label></td></tr>
           </tbody></table></div>)}
       {me && me.authorities.length > 0 && (
         <div className="panel"><h3>Your companies</h3><p className="ph">Found on your rate cons: the carrier each load was tendered to. Fix a spelling here; the MC stays.</p>
