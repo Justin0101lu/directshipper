@@ -12,6 +12,7 @@ import { relationship, relationshipLine, type Relationship } from "@/lib/freight
 import { visibleContacts, type Visible } from "@/lib/enrich";
 import { dockHolds, type DockHold } from "@/lib/freight/holds";
 import { PLANS, type PlanId } from "@/lib/plans";
+import * as li from "@/lib/linkedin/unipile";
 
 /* Outreach, prepared for the carrier.
 
@@ -222,8 +223,84 @@ export async function sendQueued() {
   return { sent, waiting };
 }
 
-/* LinkedIn is copy-only, but surfacing 40 "paste this" steps in a morning gets the
-   account restricted just the same. Count what was surfaced today per account. */
+/* ---------- LinkedIn sender ----------
+   Same shape as the email sender: one action per connected LinkedIn account at a
+   time, a random 5 to 10 minute gap, daily caps for invites and messages. A step
+   that cannot be automated (no profile on file, not connected yet for a message,
+   API trouble) falls back to the copy list instead of stalling the sequence. */
+const liGapFor = (acct: { liGapMin: number; liGapMax: number }) => minutes(acct.liGapMin + Math.random() * Math.max(0, acct.liGapMax - acct.liGapMin));
+const fit = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…");
+
+async function advance(seqId: string, step: number) {
+  const db = await getDb();
+  const next = step + 1;
+  const nextAt = next < SEQUENCE.length ? new Date(Date.now() + (SEQUENCE[next].day - SEQUENCE[step].day) * 86400e3) : null;
+  await db.update(schema.sequences).set({ step: next, nextAt, status: nextAt ? "active" : "done" }).where(eq(schema.sequences.id, seqId));
+}
+
+export async function sendLinkedinQueued() {
+  if (!li.liEnabled()) return { sent: 0, waiting: 0, fellBack: 0 };
+  const db = await getDb();
+  const boxes = (await db.select().from(schema.mailboxes).where(eq(schema.mailboxes.linkedinStatus, "ok"))).filter((m) => m.linkedinAccountId);
+  let sent = 0, waiting = 0, fellBack = 0;
+  for (const mb of boxes) {
+    if (mb.nextLiAt && mb.nextLiAt > new Date()) { waiting++; continue; }
+    const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, mb.accountId));
+    if (!acct || !acct.liAuto || !PLANS[acct.plan as PlanId].outreach) continue;
+    const [row] = await db.select({ t: schema.touches, s: schema.sequences }).from(schema.touches)
+      .innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
+      .where(and(eq(schema.touches.status, "queued"), eq(schema.touches.channel, "linkedin"), eq(schema.touches.mailboxId, mb.id), eq(schema.sequences.status, "active")))
+      .orderBy(asc(schema.touches.queuedAt)).limit(1);
+    if (!row) continue;
+    const { t, s } = row;
+    const isInvite = /connect/i.test(SEQUENCE[t.step].name);
+    const cap = isInvite ? acct.liInvitesPerDay : acct.liDmsPerDay;
+    const [done] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches)
+      .where(and(eq(schema.touches.mailboxId, mb.id), eq(schema.touches.channel, "linkedin"), eq(schema.touches.status, "sent"), eq(schema.touches.step, t.step), sql`${schema.touches.sentAt} >= ${dayStart()}`));
+    if (Number(done?.n || 0) >= cap) continue;
+    const toCopy = async (why: string) => { await db.update(schema.touches).set({ status: "copied", queuedAt: new Date() }).where(eq(schema.touches.id, t.id)); await advance(s.id, t.step); await db.update(schema.sequences).set({ suggested: `LinkedIn step left for you to paste: ${why}` }).where(eq(schema.sequences.id, s.id)); fellBack++; };
+    try {
+      if (!(await dockHolds(s.accountId, s.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, s.id)); continue; }
+      const [c] = s.contactId ? await db.select().from(schema.contacts).where(eq(schema.contacts.id, s.contactId)) : [];
+      const pub = c?.linkedin ? li.publicIdFrom(c.linkedin) : null;
+      if (!c || !pub) { await toCopy("no LinkedIn profile on file for this person"); continue; }
+      const p = await li.profile(mb.linkedinAccountId!, c.linkedinId || pub);
+      await db.update(schema.contacts).set({ linkedinId: p.provider_id, linkedinDistance: p.network_distance || null }).where(eq(schema.contacts.id, c.id));
+      const first = p.network_distance === "FIRST_DEGREE";
+      if (isInvite) {
+        if (first) { await db.update(schema.touches).set({ status: "skipped", sentAt: new Date() }).where(eq(schema.touches.id, t.id)); await advance(s.id, t.step); continue; }   // already connected
+        await li.invite(mb.linkedinAccountId!, p.provider_id, fit(t.body, 200));
+      } else {
+        if (!first) { await toCopy("not connected yet, so a message needs InMail or a second look"); continue; }
+        await li.message(mb.linkedinAccountId!, p.provider_id, fit(t.body, 1900));
+      }
+      await db.update(schema.touches).set({ status: "sent", sentAt: new Date() }).where(eq(schema.touches.id, t.id));
+      await advance(s.id, t.step);
+      await db.update(schema.mailboxes).set({ nextLiAt: new Date(Date.now() + liGapFor(acct)) }).where(eq(schema.mailboxes.id, mb.id));
+      sent++;
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (/401|403|disconnected|checkpoint|credentials/i.test(msg)) { await db.update(schema.mailboxes).set({ linkedinStatus: "error" }).where(eq(schema.mailboxes.id, mb.id)); }
+      await toCopy(msg);
+      await db.update(schema.mailboxes).set({ nextLiAt: new Date(Date.now() + liGapFor(acct)) }).where(eq(schema.mailboxes.id, mb.id));
+    }
+  }
+  return { sent, waiting, fellBack };
+}
+
+/* A LinkedIn reply, delivered by the Unipile webhook, stops the sequence like an email reply. */
+export async function linkedinReply(senderProviderId: string, text: string, at: Date) {
+  const db = await getDb();
+  const cs = await db.select().from(schema.contacts).where(eq(schema.contacts.linkedinId, senderProviderId));
+  let n = 0;
+  for (const c of cs) {
+    const seqs = await db.select().from(schema.sequences).where(and(eq(schema.sequences.contactId, c.id), eq(schema.sequences.status, "active")));
+    for (const seq of seqs) { await recordReply(seq.id, { text, date: at }); n++; }
+  }
+  return n;
+}
+
+/* Count what LinkedIn steps were surfaced or sent today per account and step. */
 async function linkedinSurfacedToday(accountId: string, step: number) {
   const db = await getDb();
   const [r] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches)
@@ -266,10 +343,15 @@ export async function runDueSteps() {
         sent++;
         continue;                                                                   // the sequence advances when it actually goes out
       } else {
-        if (t.status === "copied") continue;                                        // already on the carrier's list
+        if (t.status === "copied" || t.status === "queued") continue;             // already on the list, or with the LinkedIn sender
         const isInvite = /connect/i.test(SEQUENCE[step].name);
         const cap = isInvite ? acct.liInvitesPerDay : acct.liDmsPerDay;
         if ((await linkedinSurfacedToday(seq.accountId, step)) >= cap) continue;      // over today's LinkedIn pace; try tomorrow
+        if (li.liEnabled() && acct.liAuto && mbx?.linkedinAccountId && mbx.linkedinStatus === "ok") {
+          await db.update(schema.touches).set({ status: "queued", body: personalize(t.body, first, signer), mailboxId: mbx.id, queuedAt: new Date() }).where(eq(schema.touches.id, t.id));
+          if (!fresh.mailboxId) await db.update(schema.sequences).set({ mailboxId: mbx.id }).where(eq(schema.sequences.id, seq.id));
+          continue;                                                                 // advances when the action actually happens
+        }
         await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer), queuedAt: new Date() }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
       }
       const next = step + 1;
@@ -296,6 +378,15 @@ export async function checkReply(sequenceId: string) {
   const replies = mb.kind === "microsoft" ? await findRepliesGraph(mb, c.email, since) : await findRepliesImap(mb.id, c.email, since);
   if (!replies.length) return false;
   const r = replies[replies.length - 1];
+  return recordReply(seq.id, r);
+}
+
+/* Label the reply, draft an answer, stop the sequence. Shared by email and LinkedIn. */
+export async function recordReply(sequenceId: string, r: { text: string; date: Date }) {
+  const db = await getDb();
+  const [seq] = await db.select().from(schema.sequences).where(eq(schema.sequences.id, sequenceId));
+  if (!seq || seq.status !== "active" || !seq.contactId) return false;
+  const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, seq.accountId));
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, seq.facilityId));
   const sent = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.status, "sent"))).orderBy(asc(schema.touches.step));

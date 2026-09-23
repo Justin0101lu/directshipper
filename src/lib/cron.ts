@@ -2,7 +2,7 @@ import { eq, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { syncImapMailbox } from "./mail/imap";
 import { syncGraphMailbox } from "./mail/graph";
-import { runDueSteps, prepareTop, autopilotTick, discoverTop, sendQueued } from "./outreach";
+import { runDueSteps, prepareTop, autopilotTick, discoverTop, sendQueued, sendLinkedinQueued } from "./outreach";
 import { collectBatches, submitBatches } from "./ai/batch";
 
 export async function runCron() {
@@ -30,5 +30,6 @@ export async function runCron() {
     try { const r = await autopilotTick(a.id); if (r.started) agent[a.id] = r.started; } catch { /* next tick */ }
   }
   const sender = await sendQueued();
-  return { mailboxes: boxes.length, mail, batch, outreach, drafted, agent, sender };
+  const linkedin = await sendLinkedinQueued();
+  return { mailboxes: boxes.length, mail, batch, outreach, drafted, agent, sender, linkedin };
 }

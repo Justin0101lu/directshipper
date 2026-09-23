@@ -24,6 +24,9 @@ export const accounts = pgTable("accounts", {
   gapMax: integer("gap_max").notNull().default(8),             // upper bound; the actual gap is random in between
   liInvitesPerDay: integer("li_invites_per_day").notNull().default(10),   // LinkedIn steps surfaced per day: connection requests
   liDmsPerDay: integer("li_dms_per_day").notNull().default(20),           // and messages
+  liGapMin: integer("li_gap_min").notNull().default(5),        // minutes between LinkedIn actions
+  liGapMax: integer("li_gap_max").notNull().default(10),
+  liAuto: boolean("li_auto").notNull().default(true),          // LinkedIn steps go out on their own when an account is connected
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   forwardToken: text("forward_token").notNull().$defaultFn(() => crypto.randomUUID().slice(0, 8)),
@@ -65,6 +68,11 @@ export const mailboxes = pgTable("mailboxes", {
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   historyDone: boolean("history_done").notNull().default(false),
   nextSendAt: timestamp("next_send_at", { withTimezone: true }),   // the sender waits until this before the next email from this mailbox
+  /* the LinkedIn account of the person this mailbox speaks for, connected through Unipile */
+  linkedinAccountId: text("linkedin_account_id"),
+  linkedinName: text("linkedin_name"),
+  linkedinStatus: text("linkedin_status"),                        // ok | error
+  nextLiAt: timestamp("next_li_at", { withTimezone: true }),
   status: text("status").notNull().default("ok"),
   error: text("error"),
   createdAt: now(),
@@ -197,6 +205,8 @@ export const contacts = pgTable("contacts", {
   name: text("name"),
   title: text("title"),
   linkedin: text("linkedin"),
+  linkedinId: text("linkedin_id"),              // provider id on the carrier's LinkedIn, once looked up
+  linkedinDistance: text("linkedin_distance"),  // FIRST_DEGREE | SECOND_DEGREE | ...
   email: text("email"),
   emailStatus: text("email_status"),            // verified | bounced
   phone: text("phone"),

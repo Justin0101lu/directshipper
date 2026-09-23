@@ -16,4 +16,6 @@ export const env = {
   ms: { id: process.env.MS_CLIENT_ID || "", secret: process.env.MS_CLIENT_SECRET || "" },
   inbound: { secret: process.env.INBOUND_SECRET || "", domain: process.env.INBOUND_DOMAIN || "in.directshipper.co" },
   cronSecret: process.env.CRON_SECRET || "",
+  /* LinkedIn automation through Unipile (hosted account connection; invites and messages on the carrier's own account) */
+  unipile: { dsn: (process.env.UNIPILE_DSN || "").replace(/\/$/, ""), key: process.env.UNIPILE_API_KEY || "", secret: process.env.UNIPILE_WEBHOOK_SECRET || "" },
 };
