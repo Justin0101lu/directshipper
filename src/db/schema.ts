@@ -100,6 +100,8 @@ export const facilities = pgTable("facilities", {
   type: text("type").notNull().default("unknown"),   // 3pl | shipper | dc | unknown
   shipper: text("shipper"),
   domain: text("domain"),
+  companyKey: text("company_key"),              // domain, or the normalised shipper name: ties a company's warehouses together
+  note: text("note"),                           // for a company found in a database: industry, size
   discoveredAt: timestamp("discovered_at", { withTimezone: true }),   // last free people lookup
   createdAt: now(),
 }, (t) => [uniqueIndex("facilities_key_idx").on(t.key)]);
@@ -196,6 +198,7 @@ export const contacts = pgTable("contacts", {
   name: text("name"),
   title: text("title"),
   linkedin: text("linkedin"),
+  scope: text("scope").notNull().default("site"),   // hq: books freight for the company from head office | site: works at this warehouse
   email: text("email"),
   emailStatus: text("email_status"),            // verified | bounced
   phone: text("phone"),
@@ -227,6 +230,7 @@ export const sequences = pgTable("sequences", {
   replyText: text("reply_text"),
   replyAt: timestamp("reply_at", { withTimezone: true }),
   suggested: text("suggested"),
+  quoteNote: text("quote_note"),                // where a quoted rate came from: the carrier's own loads on that lane
   createdAt: now(),
 });
 

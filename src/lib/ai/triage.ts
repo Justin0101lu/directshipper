@@ -8,17 +8,20 @@ export const TriageSchema = z.object({
   check_back: z.string().nullable().describe("ISO date to resume if they said when, else null"),
   summary: z.string().describe("one line, what they said"),
   suggested_reply: z.string().nullable().describe("a short reply for the carrier to approve, or null if none is appropriate (unsubscribe, wrong person)"),
+  wants_rate: z.boolean().describe("true if they asked what we would charge, for a rate, a quote, pricing, or a number on a lane"),
+  lane: z.object({ origin: z.string().describe("origin city and state as they wrote it, e.g. Ontario, CA"), dest: z.string().describe("destination city and state") }).nullable().describe("the lane they want a rate on, if they named one; else null"),
 });
 export type Triage = z.infer<typeof TriageSchema>;
 
 export async function triageReply(args: {
   carrier: string; contactName: string; facility: string; ourThread: string; reply: string;
   profileLine: string;
+  quote?: { line: string; basis: string } | null;    // a rate from the carrier's own history on the lane they asked about
 }): Promise<Triage> {
   const res = await claude().messages.parse({
     model: MODEL,
     max_tokens: 2000,
-    system: `You are the dispatcher's assistant at ${args.carrier}, a trucking company. A shipper replied to our outreach. Label the reply and, when appropriate, draft a short, plain reply in the carrier's voice: specific, no sales language, one ask. Facts you may use: ${args.profileLine}. Never promise a rate you were not given; if they ask for a rate, ask one clarifying question or say a rate is coming. Sign as the carrier.`,
+    system: `You are the dispatcher's assistant at ${args.carrier}, a trucking company. A shipper replied to our outreach. Label the reply and, when appropriate, draft a short, plain reply in the carrier's voice: specific, no sales language, one ask. Facts you may use: ${args.profileLine}. ${args.quote ? `They asked for a rate and we have one from our own history on that lane: quote ${args.quote.line}, state it plainly as our rate, all-in including fuel, and add one line on what it is based on (${args.quote.basis}). Offer to firm it up once they confirm the equipment and pickup window.` : "Never promise a rate you were not given; if they ask for a rate, ask one clarifying question (equipment, weight, pickup window) or say a rate is coming."} Sign as the carrier.`,
     output_config: { format: zodOutputFormat(TriageSchema), effort: "medium" },
     messages: [{ role: "user", content: `Our thread so far:\n${args.ourThread}\n\nTheir reply (from ${args.contactName} at ${args.facility}):\n${args.reply}` }],
   });

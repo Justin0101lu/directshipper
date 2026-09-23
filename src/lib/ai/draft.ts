@@ -48,7 +48,7 @@ Facts:
 - ${ctx.lanesIn ? `We usually arrive from ${ctx.lanesIn}.` : ""}
 - Our home base: ${ctx.ourHome}. We run ${ctx.equipment}, mostly ${ctx.family}.
 - ${ctx.deadhead || "No deadhead claim available; do not invent one."}
-Never invent volumes, rates, names, or dates. If a fact is unknown, write around it. Vary the angle across touches: the warehouse visit, the call, their outbound lane, the empty return, a last note.`,
+The reader may sit at the company's head office rather than at the warehouse, so name the warehouse and its city in every touch so it lands either way. Never invent volumes, rates, names, or dates. If a fact is unknown, write around it. Vary the angle across touches: the warehouse visit, the call, their outbound lane, the empty return, a last note.`,
     output_config: { format: zodOutputFormat(DraftsSchema), effort: "medium" },
     messages: [{ role: "user", content: `Write all ${SEQUENCE.length} touches.` }],
   });

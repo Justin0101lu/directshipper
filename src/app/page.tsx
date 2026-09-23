@@ -37,7 +37,6 @@ export default function Landing() {
           {[
             ["01", "Find out what your freight is really worth", "Your whole history read back to you: commodity mix, length of haul, rate per mile by lane. Most carriers discover their busiest lane is their worst paying one.", "FREE", "Unlimited"],
             ["02", "See who books the freight, before you spend anything", "As the scan fills in, Direct Shipper looks up the transportation, logistics and shipping people at your busiest warehouses on its own. You see how many there are and their titles for free. Revealing one is a token; the email is verified before it is sent and a bounce is refunded.", "FREE", "Titles free, 1 token to reveal"],
-            ["03", "Win the freight you already know how to haul", "Facilities moving the same commodity on the same lanes you run well, with no broker in between. Your own history does the targeting.", "1 token", "per new shipper"],
             ["04", "Let the agent work them until they answer", "Five emails and one call over 30 days, each written from your own freight history and signed by you, from the company you choose. On Send, the agent starts new shippers every day on its own, never one you are under a hold on, and stops the second they reply. The call comes with a 30-second script and the voicemail to leave.", "FREE", "Sends included on paid plans"],
             ["05", "Ask your freight a question", "“Who did I haul frozen for out of Ontario last winter?” Answered from your own rate cons, with the source on every answer.", "FREE", "Unlimited"],
           ].map(([n, h, p, c, s]) => (
@@ -64,7 +63,7 @@ export default function Landing() {
             <h4>Two ways to grow, warmest first <span>how the matching works</span></h4>
             <ol>
               <li><b>Receivers</b> &mdash; warehouses you already deliver to, who ship outbound too</li>
-              <li><b>Lookalikes</b> &mdash; facilities moving freight like yours, no relationship at all</li>
+              <li><b>Lookalikes</b> &mdash; shippers moving freight like yours, opened up as the network grows; until then, companies in your kind of freight from a database, marked cold</li>
             </ol>
             <p className="fallnote">Shippers you currently reach through a broker are filtered out of both, and the number excluded is shown on every result.</p>
           </div>

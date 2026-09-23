@@ -11,9 +11,10 @@ export const pdl: Provider = {
     const j = await r.json();
     return (j.website as string) || null;
   },
-  async findPeople(company, domain, titles, size) {
+  async findPeople(company, domain, titles, size, near) {
     const esc = (s: string) => s.replace(/'/g, "");
-    const sqlq = `SELECT * FROM person WHERE ${domain ? `job_company_website='${esc(domain)}'` : `job_company_name='${esc(company)}'`} AND (${titles.map((t) => `job_title LIKE '%${esc(t)}%'`).join(" OR ")})`;
+    const where = near ? ` AND location_region='${esc(near.stateName)}'` : "";
+    const sqlq = `SELECT * FROM person WHERE ${domain ? `job_company_website='${esc(domain)}'` : `job_company_name='${esc(company)}'`} AND (${titles.map((t) => `job_title LIKE '%${esc(t)}%'`).join(" OR ")})${where}`;
     const r = await fetch("https://api.peopledatalabs.com/v5/person/search", { method: "POST", headers: H(), body: JSON.stringify({ sql: sqlq, size, pretty: false }) });
     if (!r.ok) return null;
     const j = await r.json();
@@ -25,6 +26,19 @@ export const pdl: Provider = {
       email: (p.work_email as string) || null,
       phone: Array.isArray(p.phone_numbers) && p.phone_numbers[0] ? String(p.phone_numbers[0]) : (p.mobile_phone as string) || null,
     }));
+  },
+  async findCompanies(industries, stateName, size) {
+    const esc = (s: string) => s.replace(/'/g, "");
+    const sqlq = `SELECT * FROM company WHERE location.region='${esc(stateName)}' AND location.country='united states' AND (${industries.map((i) => `industry='${esc(i)}'`).join(" OR ")}) AND employee_count>=50`;
+    const r = await fetch("https://api.peopledatalabs.com/v5/company/search", { method: "POST", headers: H(), body: JSON.stringify({ sql: sqlq, size, pretty: false }) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const rows = (j?.data || []) as Record<string, unknown>[];
+    const cap = (s: unknown) => (s ? String(s).replace(/\b\w/g, (c) => c.toUpperCase()) : null);
+    return rows.map((c) => { const loc = (c.location || {}) as Record<string, unknown>; return {
+      name: cap(c.display_name || c.name) || "Unknown company", website: (c.website as string) || null,
+      city: cap(loc.locality), state: cap(loc.region), industry: cap(c.industry), employees: typeof c.employee_count === "number" ? c.employee_count : null,
+    }; });
   },
   async findEmail(name, domain) {
     const r = await fetch("https://api.peopledatalabs.com/v5/person/enrich?" + new URLSearchParams({ name, company: domain, min_likelihood: "6" }), { headers: H() });

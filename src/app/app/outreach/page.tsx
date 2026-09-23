@@ -5,9 +5,9 @@ import { api } from "@/components/api";
 import { useFlash } from "@/components/Flash";
 import { useMe } from "@/components/AppShell";
 
-type Person = { id: string; title: string | null; name: string | null; email: string | null; emailStatus: string | null; phone: string | null; linkedin: string | null; has: Record<string, boolean> };
+type Person = { id: string; scope?: "hq" | "site"; title: string | null; name: string | null; email: string | null; emailStatus: string | null; phone: string | null; linkedin: string | null; has: Record<string, boolean> };
 type Touch = { id: string; step: number; channel: string; subject: string | null; body: string; status: string; sentAt: string | null; outcome?: string | null };
-type Seq = { id: string; mailboxId: string | null; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null; contactId: string | null; touches: Touch[] };
+type Seq = { id: string; mailboxId: string | null; status: string; step: number; nextAt: string | null; replyLabel: string | null; replyText: string | null; replyAt: string | null; suggested: string | null; quoteNote?: string | null; contactId: string | null; touches: Touch[] };
 type Rel = { deliveries: number; pickups: number; lastAt: string | null; daysSinceLast: number | null; perMonth: number; weekday: string | null; brokers: number; kind: string; warmth: number };
 type Hold = { broker: string; lastLoad: string; until: string; expired: boolean; source: string; coversConsignees: boolean; termMonths: number | null; clause?: string };
 type Card = { facilityId: string; name: string; city: string; rel: Rel | null; summary: string; sequence: Seq | null; people: Person[]; best: Person | null; contact: Person | null; hold: { clear: boolean; holds: Hold[]; reason: string }; state: string };
@@ -91,6 +91,7 @@ export default function Outreach() {
         {s.suggested ? (<>
           <div className="draft-label">Suggested reply {s.replyLabel && (() => { const [l, cl] = LABEL[s.replyLabel] || LABEL.unclear; return <span className={`tag ${cl}`}>{l}</span>; })()}</div>
           {edit ? <textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} /> : <div className="draft">{s.suggested.split("\n").map((l, i) => <span key={i}>{l}<br /></span>)}</div>}
+          {s.quoteNote && <p className="hint" style={{ marginTop: 6 }}><b>Rate basis:</b> {s.quoteNote}</p>}
           <div className="seq-actions"><button className="btn" onClick={() => sendReply(c)} disabled={!canSend || busy === `reply:${c.facilityId}`}>Send as you</button><button className="btn-ghost" onClick={() => setEdit(edit ? null : { subject: "", body: s.suggested! })}>{edit ? "Cancel edit" : "Edit"}</button></div>
         </>) : (<>
           <div className="chan-tabs">{s.touches.filter((t) => t.step < 90).map((t) => <button key={t.id} className={`chan-tab${t.step === step ? " on" : ""}`} onClick={() => { setStep(t.step); setEdit(null); }}>{t.step === 0 ? "Opener" : `Day ${d?.sequence[t.step]?.day}`}{t.channel === "phone" ? " · call" : t.channel === "linkedin" ? " · copy" : ""}{t.status === "sent" ? " ✓" : ""}</button>)}</div>
@@ -108,7 +109,7 @@ export default function Outreach() {
           </>)}
         </>)}
         {c.people.length > 0 && (
-          <div className="people-row"><span className="small">People here:</span>{c.people.map((p) => <button key={p.id} className={`chip${c.contact?.id === p.id ? " on" : ""}`} title={p.email ? p.email : p.has.email ? "email on file, 1 token" : "email will be looked up"} disabled={busy === `email:${p.id}`} onClick={() => c.contact?.id === p.id ? null : revealEmail(c, p)}>{p.name || p.title || "contact"}{p.name && p.title ? <i>{p.title}</i> : null}{p.email ? " ✓" : ""}</button>)}</div>
+          <div className="people-row"><span className="small">People here:</span>{c.people.map((p) => <button key={p.id} className={`chip${c.contact?.id === p.id ? " on" : ""}`} title={p.email ? p.email : p.has.email ? "email on file, 1 token" : "email will be looked up"} disabled={busy === `email:${p.id}`} onClick={() => c.contact?.id === p.id ? null : revealEmail(c, p)}>{p.scope === "hq" ? "HQ · " : ""}{p.name || p.title || "contact"}{p.name && p.title ? <i>{p.title}</i> : null}{p.email ? " ✓" : ""}</button>)}</div>
         )}
       </div>
     );

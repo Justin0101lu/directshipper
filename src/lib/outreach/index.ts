@@ -12,6 +12,7 @@ import { relationship, relationshipLine, type Relationship } from "@/lib/freight
 import { visibleContacts, type Visible } from "@/lib/enrich";
 import { warehouseHolds, type WarehouseHold } from "@/lib/freight/holds";
 import { PLANS, type PlanId } from "@/lib/plans";
+import { quoteFor } from "@/lib/freight/quote";
 
 /* Outreach, prepared for the carrier.
 
@@ -123,7 +124,7 @@ export async function discoverTop(accountId: string, n = 5) {
 /* Pick the person most likely to award freight. */
 const TITLE_RANK = [/transportation/i, /logistics/i, /shipping/i, /traffic/i, /supply chain/i, /distribution/i, /warehouse/i, /operations/i, /procurement|purchasing/i];
 export function bestPerson(people: Visible[]) {
-  const score = (p: Visible) => { const i = TITLE_RANK.findIndex((re) => re.test(p.title || "")); return (i < 0 ? 20 : i) - (/manager|director|lead|head|vp/i.test(p.title || "") ? 0.5 : 0) - (p.has.email ? 0.2 : 0); };
+  const score = (p: Visible) => { const i = TITLE_RANK.findIndex((re) => re.test(p.title || "")); return (i < 0 ? 20 : i) - (p.scope === "hq" ? 1 : 0) - (/manager|director|lead|head|vp/i.test(p.title || "") ? 0.5 : 0) - (p.has.email ? 0.2 : 0); };
   return [...people].sort((a, b) => score(a) - score(b))[0] || null;
 }
 
@@ -298,17 +299,24 @@ export async function checkReply(sequenceId: string) {
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, seq.facilityId));
   const sent = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.status, "sent"))).orderBy(asc(schema.touches.step));
   const prof = await computeProfile(seq.accountId);
-  let label = "unclear", suggested: string | null = null, checkBack: string | null = null;
+  let label = "unclear", suggested: string | null = null, checkBack: string | null = null, quoteNote: string | null = null;
   try {
-    const t = await triageReply({
+    const args = {
       carrier: acct.company, contactName: c.name || "the contact", facility: f.name,
       ourThread: sent.map((s) => `[${s.channel} day ${SEQUENCE[Math.min(s.step, SEQUENCE.length - 1)].day}] ${s.subject ? s.subject + "\n" : ""}${s.body}`).join("\n\n"),
       reply: r.text, profileLine: `we haul ${prof.families[0]?.name ?? "freight"} on ${prof.equipment[0]?.name ?? "trailers"}, home base ${prof.home ?? "unknown"}; ${seq.summary ?? ""}`,
-    });
+    };
+    let t = await triageReply(args);
+    /* They asked for a rate on a lane: answer with what our own rate cons say we were paid there. */
+    if (t.wants_rate && t.lane) {
+      const q = await quoteFor(seq.accountId, t.lane);
+      if (q) { t = await triageReply({ ...args, quote: { line: q.line, basis: q.basis } }); quoteNote = `${q.line}. ${q.basis}`; }
+      else quoteNote = `They asked for a rate ${t.lane.origin} to ${t.lane.dest}. Your rate cons have no loads on that lane or those states, so the reply asks a clarifying question instead of guessing.`;
+    }
     label = t.label; suggested = t.suggested_reply; checkBack = t.check_back;
   } catch { /* the carrier still sees the reply */ }
   await db.update(schema.sequences).set({
-    status: label === "not_now" && checkBack ? "paused" : "replied", replyLabel: label, replyText: r.text, replyAt: r.date, suggested,
+    status: label === "not_now" && checkBack ? "paused" : "replied", replyLabel: label, replyText: r.text, replyAt: r.date, suggested, quoteNote,
     nextAt: label === "not_now" && checkBack ? new Date(checkBack) : null,
   }).where(eq(schema.sequences.id, seq.id));
   return true;

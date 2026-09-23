@@ -85,6 +85,13 @@
       "when": 1790187038469,
       "tag": "0011_call_step",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790187367484,
+      "tag": "0012_hq_quote_cold",
+      "breakpoints": true
     }
   ]
 }

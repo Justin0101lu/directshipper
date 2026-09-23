@@ -11,9 +11,9 @@ type Load = { id: string; date: string | null; loadNumber: string | null; broker
 type Fac = { id: string; name: string; city: string; state: string; type: string; shipper: string | null; discoveredAt: string | null };
 type Outbound = { ok: true; loadsPerMonth: number; accounts: number; lanes: { dest: string; pct: number }[]; equipment: string | null; family: string | null } | { ok: false; accounts: number };
 type Warehouse = { facilityId: string; name: string; city: string; deliveries: number; pickups: number; outbound: Outbound; standing: string; why: string };
-type Look = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: string; revealed: boolean };
-type Person = { id: string; title: string | null; name: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null; has: Record<string, boolean> };
-type Data = { loads: Load[]; facilities: Record<string, Fac>; warehouses: Record<string, Warehouse>; receivers: Warehouse[]; lookalikes: { family: string; equipment: string; rows: Look[]; excluded: number; thin: boolean }; contacts: Record<string, Person[]> };
+type Look = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: string; revealed: boolean; note?: string | null };
+type Person = { id: string; scope?: "hq" | "site"; title: string | null; name: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null; has: Record<string, boolean> };
+type Data = { loads: Load[]; facilities: Record<string, Fac>; warehouses: Record<string, Warehouse>; receivers: Warehouse[]; lookalikes: { family: string; equipment: string; rows: Look[]; cold: Look[]; excluded: number; thin: boolean }; contacts: Record<string, Person[]> };
 
 const EQ: Record<string, string> = { reefer: "Reefer", dry_van: "Dry van", flatbed: "Flatbed" };
 const FAM: Record<string, string> = { frozen: "Frozen & refrigerated", produce: "Produce", beverage: "Beverage", dry: "Dry" };
@@ -54,6 +54,14 @@ export default function Prospects() {
       setEst(x.thin ? "The network has not seen enough freight like yours yet. Every rate con you add moves it forward." : `${x.count} new lookalike${x.count === 1 ? "" : "s"} match (${FAM[x.family] || x.family}, ${EQ[x.equipment] || x.equipment}). One token each = ${tok(x.count)}. ${x.excluded} excluded as broker relationships. Nothing charged yet.`); }
     catch (e) { flash((e as Error).message, "err"); }
   }
+  async function coldSearch(estimateOnly: boolean) {
+    setBusy(estimateOnly ? "cold-est" : "cold");
+    try { const x = await api<{ count: number; tokens: number; industries: string[]; found?: number }>("/api/prospects/companies", { method: "POST", json: { state: search.state, family: search.family, estimate: estimateOnly } });
+      if (estimateOnly) setEst(`Up to ${x.count} ${x.industries.join(" / ")} companies in ${search.state || "your home state"} from a company database, one token each, charged only for what comes back. These are cold: no freight seen yet.`);
+      else { flash(`${x.found} companies added for ${tok(x.found || 0)}.`); setEst(""); await load(); refresh(); } }
+    catch (e) { const err = e as Error & { status?: number }; flash(err.message, "err"); if (err.status === 402) r.push("/app/settings/billing"); }
+    finally { setBusy(null); }
+  }
   async function runSearch() {
     setBusy("search");
     try { const x = await api<{ revealed: number }>("/api/prospects/lookalikes", { method: "POST", json: { ...search, min: Number(search.min) } }); flash(`${x.revealed} lookalikes revealed for ${tok(x.revealed)}.`); setEst(""); await load(); refresh(); }
@@ -90,9 +98,9 @@ export default function Prospects() {
             </div>
             {!me?.features.providers.includes("peopledatalabs") && <p className="hint" style={{ color: "var(--red)" }}>People lookup needs a People Data Labs key on the server.</p>}
             {!ps.length && <p className="hint">{f.discoveredAt ? "No one in a freight role on file for this company." : "Nobody looked yet. Finding contacts is free; you pay only for a name, email or phone you choose to see."}</p>}
-            {ps.map((p) => (
+            {[...ps].sort((a, b) => (a.scope === "hq" ? 0 : 1) - (b.scope === "hq" ? 0 : 1)).map((p) => (
               <div key={p.id} className="person">
-                <div className="person-h"><b>{p.name || <span style={{ color: "var(--faint)" }}>Name hidden</span>}</b><span className="small">{p.title || "title unknown"}</span></div>
+                <div className="person-h"><b>{p.name || <span style={{ color: "var(--faint)" }}>Name hidden</span>}</b><span className="small">{p.title || "title unknown"}</span>{p.scope === "hq" ? <span className="tag t-ver" title="Books freight for the whole company, usually from head office">HEAD OFFICE</span> : <span className="tag t-inf" title="Works at this warehouse">THIS WAREHOUSE</span>}</div>
                 <div className="person-f">
                   {FIELDS.map(([k, label]) => {
                     const v = p[k]; const key = `${p.id}:${k}`;
@@ -169,7 +177,15 @@ export default function Prospects() {
       )}
 
       {chip === "look" && (<>
-        <div className="panel"><h3>Search lookalikes <span className="tag t-obs" style={{ marginLeft: 6 }}>1 TOKEN PER SHIPPER</span></h3>
+        {d?.lookalikes.thin && <div className="panel"><h3>Shippers like yours <span className="tag t-obs" style={{ marginLeft: 6 }}>1 TOKEN PER COMPANY</span></h3>
+          <p className="ph">The network has not seen enough freight like yours yet to point at specific warehouses. Until it has, this pulls companies in your kind of freight and your state from a company database. They are colder than a warehouse you already back into: no loads seen, no relationship. People lookups work the same way.</p>
+          <div className="grid2" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            <div className="formrow"><label>State</label><input type="text" placeholder="Your home state" value={search.state} onChange={(e) => setSearch({ ...search, state: e.target.value.toUpperCase().slice(0, 2) })} /></div>
+            <div className="formrow"><label>Freight</label><select value={search.family} onChange={(e) => setSearch({ ...search, family: e.target.value })}><option value="">Like mine</option><option value="frozen">Frozen & refrigerated</option><option value="produce">Produce</option><option value="beverage">Beverage</option><option value="dry">Dry</option></select></div>
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}><button className="btn" onClick={() => coldSearch(true)} disabled={busy === "cold-est"}>Estimate cost</button><button className="btn-ghost" onClick={() => coldSearch(false)} disabled={busy === "cold" || !me?.features.providers.includes("peopledatalabs")} title={me?.features.providers.includes("peopledatalabs") ? "" : "Needs a People Data Labs key on the server"}>{busy === "cold" ? <><span className="spin" />Searching…</> : "Find 20 companies"}</button><span className="hint" style={{ margin: 0 }}>{est}</span></div>
+        </div>}
+        {!d?.lookalikes.thin && <div className="panel"><h3>Search lookalikes <span className="tag t-obs" style={{ marginLeft: 6 }}>1 TOKEN PER SHIPPER</span></h3>
           <p className="ph">Starts from what you already haul and looks for warehouses in the network shipping the same kind of freight. Anything you have hauled for a broker is excluded, and so is anything that broker moves.</p>
           <div className="grid2" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             <div className="formrow"><label>Origin state</label><input type="text" placeholder="Any" value={search.state} onChange={(e) => setSearch({ ...search, state: e.target.value.toUpperCase().slice(0, 2) })} /></div>
@@ -178,16 +194,16 @@ export default function Prospects() {
             <div className="formrow"><label>Min loads / month</label><input type="text" value={search.min} onChange={(e) => setSearch({ ...search, min: e.target.value.replace(/\D/g, "") })} /></div>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}><button className="btn" onClick={estimate}>Estimate cost</button><button className="btn-ghost" onClick={runSearch} disabled={busy === "search" || !unrevealed}>{busy === "search" ? <><span className="spin" />Revealing…</> : `Reveal ${unrevealed ? "all · " + tok(unrevealed) : ""}`}</button><span className="hint" style={{ margin: 0 }}>{est}</span></div>
-        </div>
+        </div>}
         <table><thead><tr><th>Shipper</th><th>Why it fits</th><th>Outbound</th><th>Equip</th><th>Match</th><th>People</th><th></th></tr></thead><tbody>
-          {d && !d.lookalikes.rows.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.lookalikes.thin ? "The network has not seen enough freight like yours yet." : "Nothing matches that search."}</td></tr>}
-          {d?.lookalikes.rows.flatMap((lk) => { const n = people(lk.facilityId).length; const row = (
+          {d && !d.lookalikes.rows.length && !d.lookalikes.cold.length && <tr style={{ cursor: "default" }}><td colSpan={7} className="small">{d.lookalikes.thin ? "Nothing here yet. Use the search above to pull companies from a database, or wait for the network to fill in." : "Nothing matches that search."}</td></tr>}
+          {[...(d?.lookalikes.rows || []), ...(d?.lookalikes.cold || [])].flatMap((lk) => { const n = people(lk.facilityId).length; const row = (
             <tr key={lk.facilityId} onClick={() => lk.revealed && setOpen(open === lk.facilityId ? null : lk.facilityId)} style={lk.revealed ? undefined : { cursor: "default" }}>
               <td className="lead">{lk.revealed ? lk.name : <span style={{ color: "var(--faint)" }}>Lookalike shipper</span>}<div className="cell-sub">{lk.city}</div></td>
-              <td data-label="Why it fits">Ships {FAM[lk.family || ""] || lk.family || "freight"} on {EQ[lk.equipment || ""] || "trailers"}, like your own history. No broker between you.</td>
-              <td data-label="Outbound">{lk.loadsPerMonth}/mo observed</td>
+              <td data-label="Why it fits">{lk.match === "COLD" ? `${lk.note || "Company in your kind of freight"}, from a company database. No freight seen yet; no broker between you.` : `Ships ${FAM[lk.family || ""] || lk.family || "freight"} on ${EQ[lk.equipment || ""] || "trailers"}, like your own history. No broker between you.`}</td>
+              <td data-label="Outbound">{lk.match === "COLD" ? "unknown" : `${lk.loadsPerMonth}/mo observed`}</td>
               <td data-label="Equip">{EQ[lk.equipment || ""] || "—"}</td>
-              <td data-label="Match"><span className={`tag ${lk.match === "VERIFIED" ? "t-ver" : "t-obs"}`}>{lk.match}</span></td>
+              <td data-label="Match"><span className={`tag ${lk.match === "VERIFIED" ? "t-ver" : lk.match === "COLD" ? "t-inf" : "t-obs"}`}>{lk.match}</span></td>
               <td data-label="People" className="num">{lk.revealed && n ? `${n}` : "—"}</td>
               <td data-label="" className="right">{lk.revealed ? <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={(e) => { e.stopPropagation(); setOpen(open === lk.facilityId ? null : lk.facilityId); }}>{n ? "People" : "Find contacts"}</button> : <span className="small">1 token to reveal</span>}</td></tr>);
             return open === lk.facilityId ? [row, warehousePanel(lk.facilityId, 7, lk.facilityId)] : [row]; })}

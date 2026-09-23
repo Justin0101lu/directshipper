@@ -50,7 +50,7 @@ export async function receivers(accountId: string): Promise<Receiver[]> {
   return out.filter((r) => r.standing !== "hold").sort((a, b) => (a.standing === "clear" ? 0 : 1) - (b.standing === "clear" ? 0 : 1) || b.deliveries - a.deliveries);
 }
 
-export type Lookalike = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: "VERIFIED" | "OBSERVED"; revealed: boolean };
+export type Lookalike = { facilityId: string; name: string; city: string; family: string | null; equipment: string | null; loadsPerMonth: number; match: "VERIFIED" | "OBSERVED" | "COLD"; revealed: boolean; note?: string | null };
 
 /* Candidates: network origins with the carrier's top family + equipment, in
    a comparable length-of-haul band, that this carrier has never touched and
@@ -91,8 +91,25 @@ export async function lookalikes(accountId: string, opts: { originState?: string
       match: Number(c.accounts) >= 5 ? "VERIFIED" : "OBSERVED", revealed: !!p?.revealedAt });
     if (out.length >= 25) break;
   }
-  return { family, equipment, rows: out, excluded, thin: cands.length < 3 };
+  const cold = await coldCompanies(accountId);
+  return { family, equipment, rows: out, cold, excluded, thin: cands.length < 3 };
 }
+
+/* Companies this carrier pulled from a company database: cold, but theirs to work. */
+export async function coldCompanies(accountId: string): Promise<Lookalike[]> {
+  const db = await getDb();
+  const rows = await db.select({ f: schema.facilities }).from(schema.prospects).innerJoin(schema.facilities, eq(schema.prospects.facilityId, schema.facilities.id))
+    .where(and(eq(schema.prospects.accountId, accountId), eq(schema.facilities.type, "company"))).orderBy(desc(schema.prospects.revealedAt));
+  return rows.map(({ f }) => ({ facilityId: f.id, name: f.name, city: `${f.city}, ${f.state}`, family: null, equipment: null, loadsPerMonth: 0, match: "COLD" as const, revealed: true, note: f.note }));
+}
+
+/* Industries a company database understands, by the carrier's kind of freight. */
+export const FAMILY_INDUSTRIES: Record<string, string[]> = {
+  frozen: ["food production", "food & beverages", "dairy"],
+  produce: ["farming", "food production", "wholesale"],
+  beverage: ["food & beverages", "wine and spirits"],
+  dry: ["consumer goods", "packaging and containers", "building materials", "paper & forest products", "plastics", "wholesale"],
+};
 
 export async function revealLookalike(accountId: string, facilityId: string) {
   const db = await getDb();

@@ -1,7 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { spend, refund, TokenError } from "@/lib/tokens";
 import { REVEAL_COST } from "@/lib/plans";
+import { stateName } from "@/lib/freight/states";
 import { findymail } from "./findymail";
 import { pdl } from "./pdl";
 import { leadmagic, prospeo, wiza } from "./others";
@@ -15,9 +16,14 @@ import type { Provider } from "./types";
 
 const EMAIL_ORDER: Provider[] = [findymail, leadmagic, wiza, pdl, prospeo];
 const PHONE_ORDER: Provider[] = [pdl, leadmagic, wiza, findymail, prospeo];
-const PEOPLE_ORDER: Provider[] = [pdl];
+export const PEOPLE_ORDER: Provider[] = [pdl];
 const DOMAIN_ORDER: Provider[] = [pdl];
-export const TITLES = ["transportation", "logistics", "shipping", "traffic", "supply chain", "warehouse", "distribution", "operations", "procurement", "freight"];
+/* Two kinds of people. HQ books freight for the whole company and usually sits at head
+   office, not at the warehouse we back into. Site runs the building. We look for both. */
+export const HQ_TITLES = ["transportation", "logistics", "supply chain", "traffic", "procurement", "purchasing", "freight", "distribution"];
+export const SITE_TITLES = ["warehouse", "shipping", "receiving", "distribution", "operations", "plant"];
+export const TITLES = [...new Set([...HQ_TITLES, ...SITE_TITLES])];
+export const companyKeyOf = (f: { domain: string | null; shipper: string | null; name: string }) => f.domain || (f.shipper || f.name).toLowerCase().replace(/\b(llc|inc|corp|co|ltd|company|dc|distribution center|warehouse)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 
 export const providersReady = () => [...new Set([...EMAIL_ORDER, ...PHONE_ORDER, ...PEOPLE_ORDER])].filter((p) => p.ready()).map((p) => p.id);
 export type Field = "name" | "linkedin" | "email" | "phone";
@@ -31,37 +37,67 @@ async function domainFor(facility: typeof schema.facilities.$inferSelect) {
     if (d) {
       const host = d.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
       const db = await getDb();
-      await db.update(schema.facilities).set({ domain: host }).where(eq(schema.facilities.id, facility.id));
+      await db.update(schema.facilities).set({ domain: host, companyKey: host }).where(eq(schema.facilities.id, facility.id));
       return host;
     }
   }
   return null;
 }
 
-/* Free: who is in a freight role at this company. Cached 90 days. */
+/* The other warehouses of the same company, so head-office people are shared and looked up once. */
+async function siblings(f: typeof schema.facilities.$inferSelect) {
+  const db = await getDb();
+  const key = f.companyKey || companyKeyOf(f);
+  if (!f.companyKey) await db.update(schema.facilities).set({ companyKey: key }).where(eq(schema.facilities.id, f.id));
+  if (!key) return [];
+  return (await db.select({ id: schema.facilities.id }).from(schema.facilities).where(eq(schema.facilities.companyKey, key))).map((r) => r.id).filter((id) => id !== f.id);
+}
+
+/* Free: who books freight at this company (head office) and who runs this warehouse. Cached 90 days. */
 export async function discover(facilityId: string) {
   const db = await getDb();
   const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, facilityId));
   if (!f) throw new Error("Unknown facility");
   const fresh = f.discoveredAt && Date.now() - f.discoveredAt.getTime() < 90 * 86400e3;
-  if (fresh) return { people: await db.select().from(schema.contacts).where(eq(schema.contacts.facilityId, facilityId)), cached: true };
+  if (fresh) return { people: await peopleAt(facilityId), cached: true };
   if (!PEOPLE_ORDER.some((p) => p.ready())) throw new Error("No people provider is configured yet (People Data Labs key).");
   const domain = await domainFor(f);
   const company = f.shipper || f.name;
-  const found: { name: string; title: string | null; linkedin: string | null; email: string | null; phone: string | null }[] = [];
-  for (const p of PEOPLE_ORDER) if (p.ready() && p.findPeople) { const r = await p.findPeople(company, domain, TITLES, 6); if (r?.length) { found.push(...r.filter((x) => x.name).map((x) => ({ name: x.name!, title: x.title ?? null, linkedin: x.linkedin ?? null, email: x.email ?? null, phone: x.phone ?? null }))); break; } }
+  const sibs = await siblings(f);
+  const hqKnown = sibs.length ? (await db.select({ n: sql<number>`count(*)` }).from(schema.contacts).where(and(inArray(schema.contacts.facilityId, sibs), eq(schema.contacts.scope, "hq")))) : [{ n: 0 }];
+  type Found = { name: string; title: string | null; linkedin: string | null; email: string | null; phone: string | null; scope: "hq" | "site" };
+  const found: Found[] = [];
+  const near = { city: f.city, stateName: stateName(f.state) || f.state };
+  for (const p of PEOPLE_ORDER) if (p.ready() && p.findPeople) {
+    /* Head office: company-wide, once per company. Site: people in this state with warehouse titles. */
+    if (Number(hqKnown[0]?.n || 0) === 0) { const r = await p.findPeople(company, domain, HQ_TITLES, 6); for (const x of r || []) if (x.name) found.push({ name: x.name, title: x.title ?? null, linkedin: x.linkedin ?? null, email: x.email ?? null, phone: x.phone ?? null, scope: "hq" }); }
+    if (f.type !== "company") { const r = await p.findPeople(company, domain, SITE_TITLES, 4, near); for (const x of r || []) if (x.name && !found.some((y) => y.name.toLowerCase() === x.name!.toLowerCase())) found.push({ name: x.name, title: x.title ?? null, linkedin: x.linkedin ?? null, email: x.email ?? null, phone: x.phone ?? null, scope: "site" }); }
+    if (found.length) break;
+  }
   const existing = await db.select().from(schema.contacts).where(eq(schema.contacts.facilityId, facilityId));
   for (const x of found) {
     const dup = existing.find((e) => e.name && e.name.toLowerCase() === x.name.toLowerCase());
-    if (dup) { await db.update(schema.contacts).set({ title: dup.title ?? x.title, linkedin: dup.linkedin ?? x.linkedin, email: dup.email ?? x.email, emailStatus: dup.email ? dup.emailStatus : x.email ? "verified" : null, phone: dup.phone ?? x.phone }).where(eq(schema.contacts.id, dup.id)); continue; }
-    await db.insert(schema.contacts).values({ facilityId, name: x.name, title: x.title, linkedin: x.linkedin, email: x.email, emailStatus: x.email ? "verified" : null, phone: x.phone, source: { discovery: "peopledatalabs" } });
+    if (dup) { await db.update(schema.contacts).set({ title: dup.title ?? x.title, linkedin: dup.linkedin ?? x.linkedin, email: dup.email ?? x.email, emailStatus: dup.email ? dup.emailStatus : x.email ? "verified" : null, phone: dup.phone ?? x.phone, scope: x.scope }).where(eq(schema.contacts.id, dup.id)); continue; }
+    await db.insert(schema.contacts).values({ facilityId, name: x.name, title: x.title, linkedin: x.linkedin, email: x.email, emailStatus: x.email ? "verified" : null, phone: x.phone, scope: x.scope, source: { discovery: "peopledatalabs" } });
   }
   await db.update(schema.facilities).set({ discoveredAt: new Date() }).where(eq(schema.facilities.id, facilityId));
-  return { people: await db.select().from(schema.contacts).where(eq(schema.contacts.facilityId, facilityId)), cached: false };
+  return { people: await peopleAt(facilityId), cached: false };
+}
+
+/* People for one warehouse: its own, plus head-office people found through any warehouse of the same company. */
+export async function peopleAt(facilityId: string) {
+  const db = await getDb();
+  const [f] = await db.select().from(schema.facilities).where(eq(schema.facilities.id, facilityId));
+  if (!f) return [];
+  const own = await db.select().from(schema.contacts).where(eq(schema.contacts.facilityId, facilityId));
+  const sibs = await siblings(f);
+  const shared = sibs.length ? await db.select().from(schema.contacts).where(and(inArray(schema.contacts.facilityId, sibs), eq(schema.contacts.scope, "hq"))) : [];
+  const seen = new Set(own.map((c) => (c.name || "").toLowerCase()));
+  return [...own, ...shared.filter((c) => c.name && !seen.has(c.name.toLowerCase()))];
 }
 
 /* What this carrier can see of a person: masked unless revealed. */
-export type Visible = { id: string; facilityId: string; title: string | null; name: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null; has: Record<Field, boolean> };
+export type Visible = { id: string; facilityId: string; scope: "hq" | "site"; title: string | null; name: string | null; linkedin: string | null; email: string | null; emailStatus: string | null; phone: string | null; has: Record<Field, boolean> };
 export async function visibleContacts(accountId: string, facilityIds: string[]): Promise<Record<string, Visible[]>> {
   const db = await getDb();
   const out: Record<string, Visible[]> = {};
@@ -69,9 +105,9 @@ export async function visibleContacts(accountId: string, facilityIds: string[]):
   const mine = await db.select().from(schema.reveals).where(eq(schema.reveals.accountId, accountId));
   const seen = new Set(mine.map((r) => `${r.contactId}:${r.field}`));
   for (const fid of facilityIds) {
-    const rows = await db.select().from(schema.contacts).where(eq(schema.contacts.facilityId, fid));
+    const rows = await peopleAt(fid);
     out[fid] = rows.map((c) => ({
-      id: c.id, facilityId: fid, title: c.title,
+      id: c.id, facilityId: fid, scope: (c.scope === "hq" ? "hq" : "site"), title: c.title,
       name: seen.has(`${c.id}:name`) ? c.name : null,
       linkedin: seen.has(`${c.id}:linkedin`) ? c.linkedin : null,
       email: seen.has(`${c.id}:email`) ? c.email : null, emailStatus: c.emailStatus,

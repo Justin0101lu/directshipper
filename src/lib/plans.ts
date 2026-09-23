@@ -19,7 +19,7 @@ export const PLANS: Record<PlanId, {
     off: ["Autopilot does not send", "No broker agreement upload"] },
   carrier: { id: "carrier", name: "Carrier", price: 99, monthly: 200, extra: 0.4, outreach: true, export: true, agreements: true, inboxes: 1, perDay: 3,
     who: "1 to 20 trucks, nobody selling",
-    perks: ["The right person at every warehouse — the one who books freight, with a verified email", "Autopilot works 3 new shippers a day, the safe pace for one inbox", "1 sending inbox", "Lookalike shippers", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
+    perks: ["The right person at every warehouse — the one who books freight, with a verified email", "Autopilot works 3 new shippers a day, the safe pace for one inbox", "1 sending inbox", "Broker agreement upload to clear holds", "Export to CSV", "Everything in Free"], off: [] },
   fleet: { id: "fleet", name: "Fleet", price: 299, monthly: 600, extra: 0.3, outreach: true, export: true, agreements: true, inboxes: 5, perDay: 10,
     who: "20 to 100 trucks",
     perks: ["Everything in Carrier", "Autopilot works 10 new shippers a day across your inboxes", "Up to 5 sending inboxes, each with its own company", "Load history import — CSV & scheduled report", "Unlimited users"], off: [] },

@@ -1,5 +1,6 @@
 import { eq, and, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { companyKeyOf } from "@/lib/enrich";
 import type { RateCon, Stop } from "@/lib/ai/parse";
 import { facilityKey, facilityType, normCity, normState } from "./facilities";
 
@@ -15,7 +16,7 @@ async function upsertFacility(f: Stop, shipper: string | null) {
   const name = f.facility || shipper || `${normCity(f.city)} warehouse`;
   const [row] = await db.insert(schema.facilities).values({
     key, name, street: f.street, city: normCity(f.city), state: normState(f.state), zip: f.zip,
-    type: facilityType(name, shipper), shipper,
+    type: facilityType(name, shipper), shipper, companyKey: companyKeyOf({ domain: null, shipper, name }),
   }).returning();
   return row.id;
 }
