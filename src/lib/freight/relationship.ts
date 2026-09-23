@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 
-/* Everything the carrier's own paperwork says about one dock. Free, exact,
+/* Everything the carrier's own paperwork says about one warehouse. Free, exact,
    and the raw material for a personal opener. */
 export type Relationship = {
   facilityId: string; name: string; city: string; state: string;

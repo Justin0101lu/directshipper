@@ -4,7 +4,7 @@ import { looksLikeRateCon } from "../src/lib/mail/filter";
 import { laneMedian } from "../src/lib/freight/profile";
 
 describe("facility resolution", () => {
-  it("lands the same dock on the same key regardless of formatting", () => {
+  it("lands the same warehouse on the same key regardless of formatting", () => {
     const a = facilityKey("4200 E. Airport Drive, Ste 4", "Ontario", "California", "Lineage");
     const b = facilityKey("4200 EAST AIRPORT DR", "ontario", "CA", "LINEAGE ONTARIO");
     expect(a).toBe(b);

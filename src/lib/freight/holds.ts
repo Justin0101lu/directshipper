@@ -9,11 +9,11 @@ import { getDb, schema } from "@/db";
 export const DEFAULT_TERM_MONTHS = 24;
 
 export type Hold = { broker: string; lastLoad: string; until: string; expired: boolean; source: "assumed" | "agreement"; coversConsignees: boolean; termMonths: number | null; clause?: string; agreementId?: string };
-export type DockHold = { facilityId: string; clear: boolean; holds: Hold[]; reason: string };
+export type WarehouseHold = { facilityId: string; clear: boolean; holds: Hold[]; reason: string };
 
 function norm(s: string) { return s.toLowerCase().replace(/\b(llc|inc|corp|co|ltd|logistics|freight|transport(ation)?|services?|group|brokerage)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim(); }
 
-export async function dockHolds(accountId: string, facilityId: string): Promise<DockHold> {
+export async function warehouseHolds(accountId: string, facilityId: string): Promise<WarehouseHold> {
   const db = await getDb();
   const ST = schema.stops, L = schema.loads;
   /* Which brokers put us at this warehouse, at which end, and when last. */

@@ -19,7 +19,7 @@ export async function runCron() {
   try { const collected = await collectBatches(); const submitted = await submitBatches(); batch = { ...collected, ...submitted }; }
   catch (e) { batch = { error: (e as Error).message }; }
   const outreach = await runDueSteps();
-  /* Pre-write sequences for the warmest docks, a few per account per tick. */
+  /* Pre-write sequences for the warmest warehouses, a few per account per tick. */
   const drafted: Record<string, number> = {};
   const accts = await db.select({ id: schema.accounts.id }).from(schema.accounts);
   const agent: Record<string, number> = {};

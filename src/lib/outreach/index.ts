@@ -10,7 +10,7 @@ import { computeProfile } from "@/lib/freight/profile";
 import { outboundFor } from "@/lib/freight/network";
 import { relationship, relationshipLine, type Relationship } from "@/lib/freight/relationship";
 import { visibleContacts, type Visible } from "@/lib/enrich";
-import { dockHolds, type DockHold } from "@/lib/freight/holds";
+import { warehouseHolds, type WarehouseHold } from "@/lib/freight/holds";
 import { PLANS, type PlanId } from "@/lib/plans";
 
 /* Outreach, prepared for the carrier.
@@ -46,12 +46,12 @@ export async function setSender(accountId: string, sequenceId: string, mailboxId
   await db.update(schema.sequences).set({ mailboxId }).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
 }
 
-/* Write the seven touches for one dock. Costs one drafting call; no tokens. */
-export async function prepareDock(accountId: string, facilityId: string) {
+/* Write the seven touches for one warehouse. Costs one drafting call; no tokens. */
+export async function prepareWarehouse(accountId: string, facilityId: string) {
   const db = await getDb();
   const existing = await db.select().from(schema.sequences).where(and(eq(schema.sequences.accountId, accountId), eq(schema.sequences.facilityId, facilityId))).limit(1);
   if (existing.length) return existing[0];
-  const hold = await dockHolds(accountId, facilityId);
+  const hold = await warehouseHolds(accountId, facilityId);
   if (!hold.clear) throw new Error(hold.reason);
   if (!aiReady()) throw new Error("ANTHROPIC_API_KEY is not set, so nothing can be drafted.");
   const rel = await relationship(accountId, facilityId);
@@ -77,7 +77,7 @@ export async function prepareDock(accountId: string, facilityId: string) {
 }
 
 /* The warehouses worth writing to, warmest first: real history, no broker hold. */
-export async function rankedDocks(accountId: string, limit = 40): Promise<Relationship[]> {
+export async function rankedWarehouses(accountId: string, limit = 40): Promise<Relationship[]> {
   const db = await getDb();
   const ST = schema.stops;
   const ids = await db.select({ id: ST.facilityId, n: sql<number>`count(distinct ${ST.loadId})` }).from(ST)
@@ -90,13 +90,13 @@ export async function rankedDocks(accountId: string, limit = 40): Promise<Relati
 /* Cron: keep the top warehouses drafted as the scan fills in. A few per tick. */
 export async function prepareTop(accountId: string, n = 3) {
   const db = await getDb();
-  const docks = await rankedDocks(accountId, 15);
+  const warehouses = await rankedWarehouses(accountId, 15);
   const have = new Set((await db.select({ f: schema.sequences.facilityId }).from(schema.sequences).where(eq(schema.sequences.accountId, accountId))).map((r) => r.f));
   let made = 0;
-  for (const d of docks) {
+  for (const d of warehouses) {
     if (have.has(d.facilityId) || d.loads < 2) continue;
-    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;          // autopilot never touches a held warehouse
-    try { await prepareDock(accountId, d.facilityId); made++; } catch (e) { console.error("[outreach] draft failed", d.name, (e as Error).message); }
+    if (!(await warehouseHolds(accountId, d.facilityId)).clear) continue;          // autopilot never touches a held warehouse
+    try { await prepareWarehouse(accountId, d.facilityId); made++; } catch (e) { console.error("[outreach] draft failed", d.name, (e as Error).message); }
     if (made >= n) break;
   }
   return made;
@@ -108,9 +108,9 @@ export async function discoverTop(accountId: string, n = 5) {
   const db = await getDb();
   const { discover, providersReady } = await import("@/lib/enrich");
   if (!providersReady().length) return 0;
-  const docks = await rankedDocks(accountId, 30);
+  const warehouses = await rankedWarehouses(accountId, 30);
   let done = 0;
-  for (const d of docks) {
+  for (const d of warehouses) {
     if (d.loads < 2) continue;
     const [f] = await db.select({ at: schema.facilities.discoveredAt }).from(schema.facilities).where(eq(schema.facilities.id, d.facilityId));
     if (f?.at) continue;
@@ -150,7 +150,7 @@ export async function approveOpener(accountId: string, sequenceId: string, edite
   const [acct] = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accountId));
   if (!PLANS[acct.plan as PlanId].outreach) throw new Error("Sending is on Carrier and up. Drafting stays free.");
   if (!seq.contactId) throw new Error("Pick a person at this warehouse first.");
-  const hold = await dockHolds(accountId, seq.facilityId);
+  const hold = await warehouseHolds(accountId, seq.facilityId);
   if (!hold.clear) throw new Error(hold.reason);
   const [c] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, seq.contactId));
   const has = await revealed(accountId, c.id);
@@ -203,7 +203,7 @@ export async function sendQueued() {
     if (!row) continue;
     const { t, s } = row;
     try {
-      if (!(await dockHolds(s.accountId, s.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, s.id)); continue; }
+      if (!(await warehouseHolds(s.accountId, s.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, s.id)); continue; }
       const [c] = s.contactId ? await db.select().from(schema.contacts).where(eq(schema.contacts.id, s.contactId)) : [];
       if (!c?.email || c.emailStatus === "bounced") { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: no email to send to." }).where(eq(schema.sequences.id, s.id)); continue; }
       const opener = t.step === 0 ? t : (await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, s.id), eq(schema.touches.step, 0))))[0];
@@ -247,7 +247,7 @@ export async function runDueSteps() {
       await checkReply(seq.id);
       const [fresh] = await db.select().from(schema.sequences).where(eq(schema.sequences.id, seq.id));
       if (fresh.status !== "active" || !fresh.contactId) continue;
-      if (!(await dockHolds(seq.accountId, seq.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, seq.id)); continue; }
+      if (!(await warehouseHolds(seq.accountId, seq.facilityId)).clear) { await db.update(schema.sequences).set({ status: "paused", suggested: "Paused: a hold applies to this warehouse." }).where(eq(schema.sequences.id, seq.id)); continue; }
       const step = fresh.step;
       if (step >= SEQUENCE.length) { await db.update(schema.sequences).set({ status: "done", nextAt: null }).where(eq(schema.sequences.id, seq.id)); continue; }
       const [t] = await db.select().from(schema.touches).where(and(eq(schema.touches.sequenceId, seq.id), eq(schema.touches.step, step)));
@@ -333,28 +333,28 @@ export async function sendSuggestedReply(accountId: string, sequenceId: string, 
 export type Card = {
   facilityId: string; name: string; city: string; rel: Relationship | null; summary: string;
   sequence: (typeof schema.sequences.$inferSelect & { touches: (typeof schema.touches.$inferSelect)[] }) | null;
-  people: Visible[]; best: Visible | null; contact: Visible | null; hold: DockHold;
+  people: Visible[]; best: Visible | null; contact: Visible | null; hold: WarehouseHold;
   state: "held" | "needs_draft" | "needs_people" | "needs_email" | "ready" | "queued" | "active" | "copy" | "replied" | "paused" | "done";
 };
 export async function cards(accountId: string): Promise<Card[]> {
   const db = await getDb();
-  const docks = await rankedDocks(accountId, 40);
+  const warehouses = await rankedWarehouses(accountId, 40);
   const seqs = await db.select().from(schema.sequences).where(eq(schema.sequences.accountId, accountId)).orderBy(desc(schema.sequences.createdAt));
   const byFac = new Map(seqs.map((s) => [s.facilityId, s]));
   /* warehouses with a sequence but no longer in the top list (lookalikes, older) still show */
-  const ids = [...new Set([...docks.map((d) => d.facilityId), ...seqs.map((s) => s.facilityId)])];
+  const ids = [...new Set([...warehouses.map((d) => d.facilityId), ...seqs.map((s) => s.facilityId)])];
   const facs = ids.length ? await db.select().from(schema.facilities).where(inArray(schema.facilities.id, ids)) : [];
   const people = await visibleContacts(accountId, ids);
   const touchesAll = seqs.length ? await db.select().from(schema.touches).where(inArray(schema.touches.sequenceId, seqs.map((s) => s.id))).orderBy(asc(schema.touches.step)) : [];
   const out: Card[] = [];
   for (const fid of ids) {
     const f = facs.find((x) => x.id === fid); if (!f) continue;
-    const rel = docks.find((d) => d.facilityId === fid) || (await relationship(accountId, fid));
+    const rel = warehouses.find((d) => d.facilityId === fid) || (await relationship(accountId, fid));
     const s = byFac.get(fid) || null;
     const ps = people[fid] || [];
     const contact = s?.contactId ? ps.find((p) => p.id === s.contactId) || null : null;
     const best = contact || bestPerson(ps);
-    const hold = await dockHolds(accountId, fid);
+    const hold = await warehouseHolds(accountId, fid);
     let state: Card["state"] = "needs_draft";
     if (!hold.clear && (!s || ["draft", "active"].includes(s.status))) state = "held";
     else if (s) {
@@ -394,15 +394,15 @@ export async function autopilotTick(accountId: string) {
   let budget = Math.min(acct.autoPerDay, PLANS[acct.plan as PlanId].perDay) - Number(today?.n || 0);
   if (budget <= 0) return { started: 0, reason: "daily limit" };
   const { discover, reveal, visibleContacts } = await import("@/lib/enrich");
-  const docks = (await rankedDocks(accountId, 25)).filter((d) => d.deliveries >= 3);
+  const warehouses = (await rankedWarehouses(accountId, 25)).filter((d) => d.deliveries >= 3);
   let started = 0;
-  for (const d of docks) {
+  for (const d of warehouses) {
     if (budget <= 0) break;
     const [s] = await db.select().from(schema.sequences).where(and(eq(schema.sequences.accountId, accountId), eq(schema.sequences.facilityId, d.facilityId)));
     if (s && s.status !== "draft") continue;
-    if (!(await dockHolds(accountId, d.facilityId)).clear) continue;
+    if (!(await warehouseHolds(accountId, d.facilityId)).clear) continue;
     try {
-      const seq = s || await prepareDock(accountId, d.facilityId);
+      const seq = s || await prepareWarehouse(accountId, d.facilityId);
       let people = (await visibleContacts(accountId, [d.facilityId]))[d.facilityId] || [];
       if (!people.length) { await discover(d.facilityId); people = (await visibleContacts(accountId, [d.facilityId]))[d.facilityId] || []; }
       const best = bestPerson(people);

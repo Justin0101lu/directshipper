@@ -25,13 +25,13 @@ export const GET = withSession(async (req, s) => {
   const look = await lookalikes(s.aid, { originState: u.searchParams.get("state") || undefined, equipment: u.searchParams.get("equipment") || undefined, family: u.searchParams.get("family") || undefined, minPerMonth: Number(u.searchParams.get("min") || 4) || 4 });
   const contacts = await visibleContacts(s.aid, [...new Set([...facIds, ...look.rows.map((r) => r.facilityId)])]);
   /* Every warehouse on the page gets counts and outbound, pickup-only warehouses included. */
-  const docks: Record<string, unknown> = Object.fromEntries(recv.map((r) => [r.facilityId, r]));
+  const warehouses: Record<string, unknown> = Object.fromEntries(recv.map((r) => [r.facilityId, r]));
   const tally: Record<string, { in: number; out: number }> = {};
   for (const st of stops) { if (!st.facilityId) continue; const t = (tally[st.facilityId] ||= { in: 0, out: 0 }); if (st.kind === "drop") t.in++; else t.out++; }
   for (const fid of facIds.slice(0, 80)) {
-    if (docks[fid]) continue;
+    if (warehouses[fid]) continue;
     const f = facMap[fid]; const ob = await outboundFor(fid, s.aid); const t = tally[fid] || { in: 0, out: 0 };
-    docks[fid] = { facilityId: fid, name: f.name, city: `${f.city}, ${f.state}`, deliveries: t.in, pickups: t.out, outbound: ob,
+    warehouses[fid] = { facilityId: fid, name: f.name, city: `${f.city}, ${f.state}`, deliveries: t.in, pickups: t.out, outbound: ob,
       standing: ob.ok ? "clear" : "thin", why: t.out ? `You pick up here ${t.out} time${t.out === 1 ? "" : "s"}. ${ob.ok ? `Ships about ${ob.loadsPerMonth}/mo outbound.` : "Not enough unrelated carriers have seen this warehouse to say what else it ships."}` : "" };
   }
 
@@ -47,6 +47,6 @@ export const GET = withSession(async (req, s) => {
         drops: st.filter((x) => x.kind === "drop").map((x) => ({ facilityId: x.facilityId, city: x.city, state: x.state })),
       };
     }),
-    facilities: facMap, docks, receivers: recv, lookalikes: look, contacts,
+    facilities: facMap, warehouses, receivers: recv, lookalikes: look, contacts,
   });
 });

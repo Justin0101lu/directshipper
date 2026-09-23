@@ -1,6 +1,6 @@
 # Direct Shipper
 
-Connect a carrier's inbox. Read every rate confirmation in it. Show them what they really haul, which docks they already deliver to that ship outbound, which shippers in the network look like their freight, and run the outreach. One search box answers questions about their own loads with the rate con cited.
+Connect a carrier's inbox. Read every rate confirmation in it. Show them what they really haul, which warehouses they already deliver to that ship outbound, which shippers in the network look like their freight, and run the outreach. One search box answers questions about their own loads with the rate con cited.
 
 Three tabs: **Prospects**, **Outreach**, **My freight**. Settings under the account menu. No CRM.
 
@@ -39,10 +39,10 @@ Outlook removed password sign-in for IMAP, so Outlook uses Microsoft's OAuth, wh
 
 1. `src/lib/mail/imap.ts` walks the mailbox oldest-first in batches of 60 to 150, matching subjects and bodies that look like rate cons (`filter.ts`), so a years-deep history fills in over an hour or two of cron ticks instead of one long request.
 2. `src/lib/ai/parse.ts` reads each PDF or email body into a structured load with Claude (structured output, one document per call).
-3. `src/lib/freight/store.ts` resolves the pickup and delivery to facilities by normalized street address (`facilities.ts`), so the same dock spelled three ways becomes one record.
-4. `profile.ts` computes the freight profile; `prospects.ts` computes receivers (the carrier's own consignees) and lookalikes (network origins with the same freight family and equipment the carrier has never touched); `network.ts` publishes a dock's outbound figures only once **three or more unrelated accounts** have seen it (`NETWORK_K`).
+3. `src/lib/freight/store.ts` resolves the pickup and delivery to facilities by normalized street address (`facilities.ts`), so the same warehouse spelled three ways becomes one record.
+4. `profile.ts` computes the freight profile; `prospects.ts` computes receivers (the carrier's own consignees) and lookalikes (network origins with the same freight family and equipment the carrier has never touched); `network.ts` publishes a warehouse's outbound figures only once **three or more unrelated accounts** have seen it (`NETWORK_K`).
 5. `src/lib/enrich` is the token waterfall: one token per verified field, refunded on a miss or a bounce, first provider with a hit wins.
-6. `src/lib/outreach` is a ranked list of docks from the carrier's own rate cons. `freight/relationship.ts` summarizes the history with each dock (deliveries, pickups, first and last date, weekday, inbound lanes, broker count) for free; the sequence is written from that summary, addressed to `{{first}}`, before any person is known, so the cron pre-writes the warmest docks as the scan fills in. Docks the carrier only picks up from through an active broker are excluded. Each card has one next step: find contacts (free), reveal the best-titled person's email (a token), approve the opener. Follow-ups send themselves, LinkedIn steps are copy-only, and a reply stops everything and gets a suggested answer.
+6. `src/lib/outreach` is a ranked list of warehouses from the carrier's own rate cons. `freight/relationship.ts` summarizes the history with each warehouse (deliveries, pickups, first and last date, weekday, inbound lanes, broker count) for free; the sequence is written from that summary, addressed to `{{first}}`, before any person is known, so the cron pre-writes the warmest warehouses as the scan fills in. Warehouses the carrier only picks up from through an active broker are excluded. Each card has one next step: find contacts (free), reveal the best-titled person's email (a token), approve the opener. Follow-ups send themselves, LinkedIn steps are copy-only, and a reply stops everything and gets a suggested answer.
 7. `src/lib/ai/ask.ts` answers a question by querying the carrier's own loads and replies through tools and citing the row ids it used. Citations the model did not actually retrieve are dropped.
 
 ## Sending limits

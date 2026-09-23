@@ -42,7 +42,7 @@ export async function draftSequence(ctx: DraftContext) {
     system: `You write outreach for ${ctx.carrier}, a trucking company, to a shipper's transportation contact. Plain, short, specific, no marketing words, no exclamation marks, no flattery. Every touch stands alone and rests only on the facts below; a reader should feel this was written for their warehouse and nobody else's. Emails: 60-120 words, subject under 60 characters, no subject line inside the body. LinkedIn: the connection request under 200 characters (LinkedIn cuts a note at 200 on a free account), the later LinkedIn message under 300, no subject. Address the person as ${who}${ctx.contactFirst ? "" : " (a placeholder that is replaced with their first name; write it exactly as {{first}})"}. Sign every email exactly with the placeholder {{signer}} on its own last line (it is replaced with the sender's name and title when sent). Steps, in order:
 ${SEQUENCE.map((s, i) => `${i}. ${s.name} (${s.channel}, day ${s.day})`).join("\n")}
 Facts:
-- Dock: ${ctx.facility}, ${ctx.city}
+- Warehouse: ${ctx.facility}, ${ctx.city}
 - Our history there: ${ctx.relationship}
 - Relationship: ${ctx.kind === "receiver" ? "we deliver to them; nobody brokered that relationship. Lead with being at their warehouse, and with the outbound we could take from there." : ctx.kind === "shipper" ? "we already pick up from them, through brokers. Lead with the loads we already run for them and ask about going direct." : ctx.kind === "both" ? "we both deliver to and pick up from them. Lead with how often our trucks are there." : "no relationship yet. Lead with the freight fit, not with us."}
 - Their outbound: ${ctx.theirOutbound || "unknown; do not claim a lane"}

@@ -25,7 +25,7 @@ const DESTS = [
   { facility: "Desert Valley Foods DC", street: "5100 W Glendale Ave", city: "Glendale", state: "AZ", miles: 395 },
   { facility: "Wasatch Cold", street: "1200 S 5600 W", city: "Salt Lake City", state: "UT", miles: 710 },
 ];
-const HOME_DOCKS = [
+const HOME_YARDS = [
   { facility: "Inland Empire Cold", street: "3000 E Guasti Rd", city: "Ontario", state: "CA", miles: 390 },
   { facility: "Corona Produce Terminal", street: "1200 Magnolia Ave", city: "Corona", state: "CA", miles: 395 },
 ];
@@ -66,7 +66,7 @@ async function main() {
     /* Backhauls: a return load picked up in the delivery city within 48 hours, so deadhead varies by city. */
     const backP: Record<string, number> = { Phoenix: 0.75, "Las Vegas": 0.85, Tolleson: 0.7, Glendale: 0.6, Dallas: 0.5, Denver: 0.25, "Salt Lake City": 0.35 };
     if (rnd() < (backP[d.city] ?? 0.3)) {
-      const home = pick(HOME_DOCKS);
+      const home = pick(HOME_YARDS);
       const t2 = new Date(t.getTime() + (d.miles / 500 + 0.5) * 86400e3 + rnd() * 40 * 3600e3);
       const back = rc({ facility: `${d.city} Cold Warehouse`, street: `${100 + Math.floor(rnd() * 900)} Industrial Way`, city: d.city, state: d.state, zip: "", shipper: null, family: "frozen", w: 1 }, home, br, t2, 1.8 + rnd() * 1.2, true);
       back.shipper = null;

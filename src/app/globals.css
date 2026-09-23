@@ -685,23 +685,23 @@ textarea{font-family:var(--sans);font-size:14.5px;line-height:1.5;padding:11px 1
 .landing-hero{padding:80px 0 60px}
 
 /* ---------- prospects: warehouses inside load rows, people panel ---------- */
-.dock-line{line-height:1.35;margin-bottom:3px}
-.dock-name{color:var(--ink);font-weight:500;border-bottom:1px solid var(--rule-hard)}
-.dock-name:hover{color:var(--blue);border-bottom-color:var(--blue)}
+.wh-line{line-height:1.35;margin-bottom:3px}
+.wh-name{color:var(--ink);font-weight:500;border-bottom:1px solid var(--rule-hard)}
+.wh-name:hover{color:var(--blue);border-bottom-color:var(--blue)}
 .person{border:1px solid var(--rule);background:var(--card);border-radius:2px;padding:10px 12px;margin-top:8px}
 .person-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
 .person-h b{font-weight:500;font-size:14.5px}
 .person-f{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .pf{font-family:var(--mono);font-size:12.5px;background:var(--sunk);padding:4px 8px;border-radius:2px}
 .pf-btn{padding:4px 9px!important;font-size:12.5px!important;min-height:0!important}
-@media (max-width:860px){ .dock-line{text-align:left} }
+@media (max-width:860px){ .wh-line{text-align:left} }
 
-.dock-name i{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--faint);margin-right:5px}
-.dock-name.open{color:var(--blue);border-bottom-color:var(--blue)}
-.dock-panel{background:var(--sunk);padding:12px 18px 16px!important;border-left:3px solid var(--blue)}
-.dock-panel-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
-.dock-panel-h b{font-size:15px}
-@media (max-width:860px){ .dock-panel{display:block;padding:12px 14px 14px!important} .dock-panel::before{display:none} }
+.wh-name i{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--faint);margin-right:5px}
+.wh-name.open{color:var(--blue);border-bottom-color:var(--blue)}
+.wh-panel{background:var(--sunk);padding:12px 18px 16px!important;border-left:3px solid var(--blue)}
+.wh-panel-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.wh-panel-h b{font-size:15px}
+@media (max-width:860px){ .wh-panel{display:block;padding:12px 14px 14px!important} .wh-panel::before{display:none} }
 
 /* ---------- outreach cards ---------- */
 .ocard{background:var(--card);border:1px solid var(--rule);border-radius:2px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:0 16px;align-items:start}
