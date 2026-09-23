@@ -222,13 +222,13 @@ export async function sendQueued() {
   return { sent, waiting };
 }
 
-/* LinkedIn is copy-only, but surfacing 40 "paste this" steps in a morning gets the
-   account restricted just the same. Count what was surfaced today per account. */
-async function linkedinSurfacedToday(accountId: string, step: number) {
+/* The call is the carrier's to make. Ten a day is a morning's work; more than that
+   and the list goes stale. Count what was put on the list today per account. */
+async function callsListedToday(accountId: string) {
   const db = await getDb();
   const [r] = await db.select({ n: sql<number>`count(*)` }).from(schema.touches)
     .innerJoin(schema.sequences, eq(schema.touches.sequenceId, schema.sequences.id))
-    .where(and(eq(schema.sequences.accountId, accountId), eq(schema.touches.channel, "linkedin"), eq(schema.touches.step, step), sql`${schema.touches.queuedAt} >= ${dayStart()}`));
+    .where(and(eq(schema.sequences.accountId, accountId), sql`${schema.touches.channel} <> 'email'`, sql`${schema.touches.queuedAt} >= ${dayStart()}`));
   return Number(r?.n || 0);
 }
 
@@ -237,7 +237,7 @@ export async function pause(accountId: string, sequenceId: string, on: boolean) 
   await db.update(schema.sequences).set({ status: on ? "paused" : "active", nextAt: on ? null : new Date() }).where(and(eq(schema.sequences.id, sequenceId), eq(schema.sequences.accountId, accountId)));
 }
 
-/* Runs from cron. Sends due email steps; LinkedIn steps wait for a paste. */
+/* Runs from cron. Queues due email steps for the paced sender; the call step waits on the carrier's list. */
 export async function runDueSteps() {
   const db = await getDb();
   const due = await db.select().from(schema.sequences).where(and(eq(schema.sequences.status, "active"), lte(schema.sequences.nextAt, new Date()))).limit(50);
@@ -267,10 +267,8 @@ export async function runDueSteps() {
         continue;                                                                   // the sequence advances when it actually goes out
       } else {
         if (t.status === "copied") continue;                                        // already on the carrier's list
-        const isInvite = /connect/i.test(SEQUENCE[step].name);
-        const cap = isInvite ? acct.liInvitesPerDay : acct.liDmsPerDay;
-        if ((await linkedinSurfacedToday(seq.accountId, step)) >= cap) continue;      // over today's LinkedIn pace; try tomorrow
-        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer), queuedAt: new Date() }).where(eq(schema.touches.id, t.id));   // waits in the queue for the carrier to paste
+        if ((await callsListedToday(seq.accountId)) >= acct.callsPerDay) continue;     // enough calls listed for today; tomorrow
+        await db.update(schema.touches).set({ status: "copied", body: personalize(t.body, first, signer), subject: t.subject ? personalize(t.subject, first, signer) : t.subject, queuedAt: new Date() }).where(eq(schema.touches.id, t.id));   // on the carrier's call list
       }
       const next = step + 1;
       const nextAt = next < SEQUENCE.length ? new Date(Date.now() + (SEQUENCE[next].day - SEQUENCE[step].day) * 86400e3) : null;

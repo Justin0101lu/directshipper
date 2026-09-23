@@ -13,7 +13,7 @@ export type Me = {
   batchQueue: number;
   autopilot: "off" | "draft" | "send"; autoPerDay: number;
   limits: { outreach: boolean; agreements: boolean; inboxes: number; perDay: number; planName: string };
-  sending: { emailsPerDay: number; gapMin: number; gapMax: number; liInvitesPerDay: number; liDmsPerDay: number };
+  sending: { emailsPerDay: number; gapMin: number; gapMax: number; callsPerDay: number };
   authorities: { id: string; name: string; mc: string | null; loads: number }[];
   features: { microsoft: boolean; providers: string[]; ai: boolean; stripe: boolean };
 };

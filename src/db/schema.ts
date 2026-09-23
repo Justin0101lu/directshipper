@@ -22,8 +22,7 @@ export const accounts = pgTable("accounts", {
   emailsPerDay: integer("emails_per_day").notNull().default(20),
   gapMin: integer("gap_min").notNull().default(3),             // minutes between sends, lower bound
   gapMax: integer("gap_max").notNull().default(8),             // upper bound; the actual gap is random in between
-  liInvitesPerDay: integer("li_invites_per_day").notNull().default(10),   // LinkedIn steps surfaced per day: connection requests
-  liDmsPerDay: integer("li_dms_per_day").notNull().default(20),           // and messages
+  callsPerDay: integer("calls_per_day").notNull().default(10),            // call steps put on the carrier's list per day
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   forwardToken: text("forward_token").notNull().$defaultFn(() => crypto.randomUUID().slice(0, 8)),
@@ -238,7 +237,8 @@ export const touches = pgTable("touches", {
   channel: text("channel").notNull(),           // email | linkedin
   subject: text("subject"),
   body: text("body").notNull(),
-  status: text("status").notNull().default("draft"),   // draft | queued | sent | copied | skipped
+  status: text("status").notNull().default("draft"),   // draft | queued | sent | copied | skipped   (a call: copied = on your list, sent = made)
+  outcome: text("outcome"),                            // for a call: spoke | voicemail | no_answer | wrong_number
   messageId: text("message_id"),
   mailboxId: text("mailbox_id"),                       // which mailbox sent it (email touches)
   queuedAt: timestamp("queued_at", { withTimezone: true }),

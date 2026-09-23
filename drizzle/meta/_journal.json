@@ -78,6 +78,13 @@
       "when": 1790027287612,
       "tag": "0010_sending_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790187038469,
+      "tag": "0011_call_step",
+      "breakpoints": true
     }
   ]
 }
